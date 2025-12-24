@@ -1,0 +1,22 @@
+{
+  "torus_size": 1.0,
+  "dt": 0.05,
+  "v_max": 0.4,
+  "v_ghost": 0.3,
+  "sigma_env": 0.01,
+  "sigma_ghost": 0.01,
+  "eps_catch": 0.05,
+  "eps_pick": 0.04,
+  "num_goblets": 3,
+  "p_mix": 0.05,
+  "p_type_positive": 0.5,
+  "type_resample_p": 0.5,
+  "seed": 0,
+  "use_teacher_reward": true,
+  "feature_dim": 128,
+  "actor_feature_dim": 32,
+  "c_psi": 1.0,
+  "feature_sigma": 1.0,
+  "lambda_action_penalty": 0.1,
+  "teacher_base_scale": 0.05
+}

@@ -1,0 +1,5 @@
+{"iter": 0, "stability_proxy": 0.9999913415722262, "power_iters": 20, "batch_size": 512}
+{"iter": 1, "stability_proxy": 0.9999904661397809, "power_iters": 20, "batch_size": 512}
+{"iter": 2, "stability_proxy": 0.9999895647257389, "power_iters": 20, "batch_size": 512}
+{"iter": 3, "stability_proxy": 0.9999916150514712, "power_iters": 20, "batch_size": 512}
+{"iter": 4, "stability_proxy": 0.9999917340651692, "power_iters": 20, "batch_size": 512}

@@ -1,0 +1,27 @@
+{
+  "seed": 0,
+  "outer_iters": 2000,
+  "trajectories": 16,
+  "horizon": 200,
+  "gamma": 0.99,
+  "alpha_w": 0.08,
+  "alpha_pi": 0.06,
+  "beta": 0.05,
+  "sigma_mu": 0.35,
+  "sigma_pi": 0.30,
+  "K_mc": 4,
+  "theta_radius": 6.0,
+  "theta_init_scale": 0.1,
+  "w_init_scale": 0.1,
+  "checkpoint_every": 20,
+  "log_every": 1,
+  "env_config_path": "configs/default.yaml",
+  "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.05 },
+  "probes": {
+    "enabled": true,
+    "every": 50,
+    "fixed_point": { "batch_size": 4096, "k_mc": 4, "max_iters": 2000, "tol": 1e-7 },
+    "stability":   { "batch_size": 4096, "k_mc": 4, "n_power_iters": 80 },
+    "distribution":{ "num_samples": 4096 }
+  }
+}

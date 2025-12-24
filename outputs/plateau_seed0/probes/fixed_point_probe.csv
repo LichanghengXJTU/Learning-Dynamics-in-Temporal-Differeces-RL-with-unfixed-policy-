@@ -1,0 +1,2 @@
+iter,w_gap,w_sharp_drift,converged,num_iters,batch_size,tol
+49,0.11862334020446176,nan,False,2000,4096,1e-07
