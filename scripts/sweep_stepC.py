@@ -8,6 +8,7 @@ import csv
 import hashlib
 import json
 import math
+import platform
 import shlex
 import subprocess
 import sys
@@ -28,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_BETA_FACTORS = [0.1, 0.2, 0.4, 1.0, 2.0, 4.0, 8.0]
 DEFAULT_ALPHA_W_FACTORS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
-DEFAULT_SIGMA_FACTORS = [0.5, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0]
-DEFAULT_P_MIX_FACTORS = [0.1, 0.2, 0.4, 1.0, 2.0, 4.0, 8.0]
+DEFAULT_THETA_MU_OFFSET_MIN = 0.0
+DEFAULT_THETA_MU_OFFSET_MAX = 0.5
 
 
 @dataclass
@@ -37,34 +38,31 @@ class RunSpec:
     run_id: str
     beta: float
     alpha_w: float
-    offpolicy_axis: str
-    offpolicy_value: float
+    theta_mu_offset_scale: float
     seed: Optional[int]
     output_dir: Path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a Step C sweep (up to 7x7x7).")
+    parser = argparse.ArgumentParser(description="Run a Step C sweep (contract 10x10x10).")
     parser.add_argument("--base-config", type=str, default="configs/train_plateau.yaml")
-    parser.add_argument("--out-root", type=str, default="outputs/sweep")
+    parser.add_argument("--out-root", type=str, default="outputs/base_check")
     parser.add_argument("--timestamp", type=str, default=None, help="Reuse an existing timestamp (YYYYmmdd_HHMMSS).")
     parser.add_argument("--run-root", type=str, default=None, help="Explicit sweep root (overrides out-root/timestamp).")
-    parser.add_argument("--outer-iters", type=int, default=1000)
+    parser.add_argument("--outer-iters", type=int, default=200)
     parser.add_argument("--report-every", type=int, default=50)
     parser.add_argument("--report-every-seconds", type=float, default=0.0)
-    parser.add_argument("--grid", type=int, default=7, help="Points per axis (<=7).")
+    parser.add_argument("--grid", type=int, default=10, help="Points per axis.")
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--seeds", type=str, default=None, help="Comma-separated list of seeds.")
     parser.add_argument("--beta-values", type=str, default=None, help="Comma-separated beta values.")
     parser.add_argument("--alpha-w-values", type=str, default=None, help="Comma-separated alpha_w values.")
     parser.add_argument(
-        "--offpolicy-axis",
+        "--theta-mu-offset-values",
         type=str,
-        default="sigma_mu",
-        choices=["sigma_mu", "sigma_pi", "p_mix"],
-        help="Axis controlling off-policy mismatch.",
+        default=None,
+        help="Comma-separated theta_mu_offset_scale values.",
     )
-    parser.add_argument("--offpolicy-values", type=str, default=None, help="Comma-separated values for offpolicy axis.")
     parser.add_argument("--eps-slope", type=float, default=1e-6, help="Plateau slope threshold.")
     parser.add_argument("--eps-drift", type=float, default=1e-4, help="Plateau drift threshold.")
     parser.add_argument("--offpolicy-threshold", type=float, default=1e-3, help="Off-policy score threshold.")
@@ -83,7 +81,6 @@ def parse_args() -> argparse.Namespace:
         help="Resume runs when output dir exists (default).",
     )
     parser.add_argument("--no-resume", dest="resume", action="store_false", help="Disable resume.")
-    parser.add_argument("--pip-freeze", action="store_true", help="Record pip freeze in meta.")
     return parser.parse_args()
 
 
@@ -161,6 +158,30 @@ def pick_grid(values: List[float], grid: int) -> List[float]:
     return chosen
 
 
+def linspace_values(min_val: float, max_val: float, num: int) -> List[float]:
+    if num <= 1:
+        return [round(float(min_val), 12)]
+    step = (max_val - min_val) / (num - 1)
+    values = [round(float(min_val + step * idx), 12) for idx in range(num)]
+    if len(set(values)) != len(values):
+        raise SystemExit("linspace produced duplicate values; adjust min/max or provide explicit values.")
+    return values
+
+
+def logspace_values(min_val: float, max_val: float, num: int) -> List[float]:
+    if min_val <= 0 or max_val <= 0:
+        raise SystemExit("logspace requires positive min/max values.")
+    if num <= 1:
+        return [round(float(min_val), 12)]
+    log_min = math.log10(min_val)
+    log_max = math.log10(max_val)
+    step = (log_max - log_min) / (num - 1)
+    values = [round(float(10 ** (log_min + step * idx)), 12) for idx in range(num)]
+    if len(set(values)) != len(values):
+        raise SystemExit("logspace produced duplicate values; adjust min/max or provide explicit values.")
+    return values
+
+
 def format_tag(value: Optional[float]) -> str:
     if value is None:
         return "none"
@@ -176,7 +197,7 @@ def run_id_for(params: Dict[str, Any]) -> str:
     digest = hashlib.md5(payload.encode("utf-8")).hexdigest()[:8]
     return (
         f"b{format_tag(params.get('beta'))}_aw{format_tag(params.get('alpha_w'))}_"
-        f"{params.get('offpolicy_axis')}{format_tag(params.get('offpolicy_value'))}_"
+        f"tmos{format_tag(params.get('theta_mu_offset_scale'))}_"
         f"s{params.get('seed', 'na')}_{digest}"
     )
 
@@ -241,6 +262,37 @@ def pip_freeze() -> str:
     return result.stdout.strip()
 
 
+def git_text(args: Sequence[str]) -> str:
+    try:
+        result = subprocess.run(
+            list(args),
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def write_meta_artifacts(meta_dir: Path) -> None:
+    ensure_dir(meta_dir)
+    git_head = git_text(["git", "rev-parse", "HEAD"])
+    (meta_dir / "git_head.txt").write_text((git_head or "") + "\n")
+    git_status = git_text(["git", "status", "--porcelain"])
+    (meta_dir / "git_status.txt").write_text((git_status or "") + "\n")
+    git_diff = git_text(["git", "diff"])
+    (meta_dir / "git_diff.patch").write_text((git_diff or "") + "\n")
+    python_version = sys.version.replace("\n", " ").strip()
+    (meta_dir / "python_version.txt").write_text(python_version + "\n")
+    uname_text = " ".join(platform.uname())
+    (meta_dir / "uname.txt").write_text(uname_text + "\n")
+    (meta_dir / "requirements_freeze.txt").write_text(pip_freeze() + "\n")
+
+
 def append_jsonl(path: Path, payload: Dict[str, Any], lock: threading.Lock) -> None:
     line = json.dumps(payload, ensure_ascii=True)
     with lock:
@@ -278,6 +330,8 @@ def build_command(
         str(spec.beta),
         "--alpha-w",
         str(spec.alpha_w),
+        "--theta-mu-offset-scale",
+        str(spec.theta_mu_offset_scale),
         "--outer-iters",
         str(args.outer_iters),
     ]
@@ -287,12 +341,6 @@ def build_command(
         cmd.extend(["--report-every-seconds", str(args.report_every_seconds)])
     if spec.seed is not None:
         cmd.extend(["--seed", str(spec.seed)])
-    if spec.offpolicy_axis == "sigma_mu":
-        cmd.extend(["--sigma-mu", str(spec.offpolicy_value)])
-    elif spec.offpolicy_axis == "sigma_pi":
-        cmd.extend(["--sigma-pi", str(spec.offpolicy_value)])
-    elif spec.offpolicy_axis == "p_mix":
-        cmd.extend(["--p-mix", str(spec.offpolicy_value)])
     if resume:
         cmd.append("--resume")
     return cmd
@@ -319,8 +367,7 @@ def run_one(
         "base_config": str(base_config),
         "beta": spec.beta,
         "alpha_w": spec.alpha_w,
-        "offpolicy_axis": spec.offpolicy_axis,
-        "offpolicy_value": spec.offpolicy_value,
+        "theta_mu_offset_scale": spec.theta_mu_offset_scale,
         "seed": spec.seed,
     }
     write_json(run_dir / "params.json", params)
@@ -620,8 +667,7 @@ def compute_metrics(
         "run_dir": str(run_dir),
         "beta": params.get("beta"),
         "alpha_w": params.get("alpha_w"),
-        "offpolicy_axis": params.get("offpolicy_axis"),
-        "offpolicy_value": params.get("offpolicy_value"),
+        "theta_mu_offset_scale": params.get("theta_mu_offset_scale"),
         "seed": params.get("seed"),
         "health_status": health_status,
         "stable_flag": stable_flag,
@@ -657,8 +703,7 @@ def load_params(run_dir: Path) -> Dict[str, Any]:
         "run_id": run_dir.name,
         "beta": config.get("beta"),
         "alpha_w": config.get("alpha_w"),
-        "offpolicy_axis": "sigma_mu",
-        "offpolicy_value": config.get("sigma_mu"),
+        "theta_mu_offset_scale": config.get("theta_mu_offset_scale"),
         "seed": config.get("seed"),
         "p_mix": env_cfg.get("p_mix"),
     }
@@ -688,8 +733,7 @@ def summarize_sweep(
         "run_id",
         "beta",
         "alpha_w",
-        "offpolicy_axis",
-        "offpolicy_value",
+        "theta_mu_offset_scale",
         "seed",
         "health_status",
         "stable_flag",
@@ -747,10 +791,35 @@ def summarize_sweep(
     write_bucket(buckets_dir / "instability_top.csv", instability_sorted[:top_k])
     write_bucket(buckets_dir / "plateau_drift_top.csv", plateau_sorted[:top_k])
 
+    write_json(
+        summary_dir / "summary.json",
+        {
+            "run_root": str(run_root),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "grid": grid_info,
+            "thresholds": {
+                "offpolicy_threshold": args.offpolicy_threshold,
+                "eps_slope": args.eps_slope,
+                "eps_drift": args.eps_drift,
+                "window": args.window,
+                "stability_eps": args.stability_eps,
+                "td_loss_blowup": args.td_loss_blowup,
+                "w_norm_blowup": args.w_norm_blowup,
+            },
+            "counts": {
+                "total_runs": len(rows),
+                "offpolicy_stable": len(offpolicy_stable),
+                "instability": len(instability),
+                "plateau_drift": len(plateau),
+            },
+            "rows": rows,
+        },
+    )
+
     boundary_rows = []
     group_map: Dict[Tuple[Any, Any, Any], List[Dict[str, Any]]] = {}
     for row in rows:
-        key = (row.get("seed"), row.get("beta"), row.get("offpolicy_value"))
+        key = (row.get("seed"), row.get("beta"), row.get("theta_mu_offset_scale"))
         group_map.setdefault(key, []).append(row)
     for items in group_map.values():
         items_sorted = sorted(items, key=lambda r: r.get("alpha_w") or 0.0)
@@ -763,7 +832,7 @@ def summarize_sweep(
                         "run_id": prev.get("run_id"),
                         "beta": prev.get("beta"),
                         "alpha_w": prev.get("alpha_w"),
-                        "offpolicy_value": prev.get("offpolicy_value"),
+                        "theta_mu_offset_scale": prev.get("theta_mu_offset_scale"),
                         "offpolicy_score": prev.get("offpolicy_score"),
                         "td_loss_last": prev.get("td_loss_last"),
                         "w_norm_last": prev.get("w_norm_last"),
@@ -785,8 +854,7 @@ def summarize_sweep(
     lines.append("## Grid (effective)")
     lines.append(f"- beta_values: {grid_info.get('beta_values')}")
     lines.append(f"- alpha_w_values: {grid_info.get('alpha_w_values')}")
-    lines.append(f"- offpolicy_axis: {grid_info.get('offpolicy_axis')}")
-    lines.append(f"- offpolicy_values: {grid_info.get('offpolicy_values')}")
+    lines.append(f"- theta_mu_offset_scale_values: {grid_info.get('theta_mu_offset_scale_values')}")
     lines.append("")
     lines.append("## Thresholds")
     lines.append(f"- offpolicy_threshold: {args.offpolicy_threshold}")
@@ -815,7 +883,7 @@ def summarize_sweep(
             "run_id",
             "beta",
             "alpha_w",
-            "offpolicy_value",
+            "theta_mu_offset_scale",
             "offpolicy_score",
             "td_loss_last",
             "w_norm_last",
@@ -832,7 +900,7 @@ def summarize_sweep(
                         str(row.get("run_id")),
                         str(row.get("beta")),
                         str(row.get("alpha_w")),
-                        str(row.get("offpolicy_value")),
+                        str(row.get("theta_mu_offset_scale")),
                         str(row.get("offpolicy_score")),
                         str(row.get("td_loss_last")),
                         str(row.get("w_norm_last")),
@@ -861,7 +929,7 @@ def summarize_sweep(
             "run_id",
             "beta",
             "alpha_w",
-            "offpolicy_value",
+            "theta_mu_offset_scale",
             "offpolicy_score",
             "td_loss_last",
             "w_norm_last",
@@ -878,7 +946,7 @@ def summarize_sweep(
                         str(row.get("run_id")),
                         str(row.get("beta")),
                         str(row.get("alpha_w")),
-                        str(row.get("offpolicy_value")),
+                        str(row.get("theta_mu_offset_scale")),
                         str(row.get("offpolicy_score")),
                         str(row.get("td_loss_last")),
                         str(row.get("w_norm_last")),
@@ -892,55 +960,85 @@ def summarize_sweep(
 
     lines.append("## Outputs")
     lines.append(f"- summary_csv: {summary_dir / 'summary.csv'}")
+    lines.append(f"- summary_json: {summary_dir / 'summary.json'}")
+    lines.append(f"- summary_rows: {summary_dir / 'summary_rows.jsonl'}")
+    lines.append(f"- artifacts_index: {summary_dir / 'artifacts_index.md'}")
     lines.append(f"- buckets_dir: {buckets_dir}")
 
     summary_md.write_text("\n".join(lines))
+    write_artifacts_index(run_root, summary_dir, buckets_dir)
     return rows
+
+
+def write_artifacts_index(run_root: Path, summary_dir: Path, buckets_dir: Path) -> None:
+    items: List[str] = []
+
+    def add(path: Path) -> None:
+        if path.exists():
+            items.append(str(path))
+
+    meta_dir = run_root / "meta"
+    add(meta_dir / "git_head.txt")
+    add(meta_dir / "git_status.txt")
+    add(meta_dir / "git_diff.patch")
+    add(meta_dir / "python_version.txt")
+    add(meta_dir / "requirements_freeze.txt")
+    add(meta_dir / "uname.txt")
+    add(meta_dir / "commandline.txt")
+    add(meta_dir / "meta.json")
+    add(meta_dir / "grid_effective.yaml")
+    add(meta_dir / "run_plan.jsonl")
+    add(meta_dir / "run_status.json")
+    add(meta_dir / "commands_executed.jsonl")
+
+    add(summary_dir / "summary.csv")
+    add(summary_dir / "summary.json")
+    add(summary_dir / "summary.md")
+    add(summary_dir / "summary_rows.jsonl")
+    if buckets_dir.exists():
+        for bucket in sorted(buckets_dir.glob("*.csv")):
+            add(bucket)
+
+    runs_dir = run_root / "runs"
+    if runs_dir.exists():
+        items.append(str(runs_dir))
+
+    artifacts_path = summary_dir / "artifacts_index.md"
+    lines = ["# Artifacts Index", ""]
+    lines.extend(f"- {item}" for item in items)
+    lines.append(f"- {artifacts_path}")
+    artifacts_path.write_text("\n".join(lines))
 
 
 def main() -> None:
     args = parse_args()
-    if args.grid > 7 or args.grid < 1:
-        raise SystemExit("--grid must be between 1 and 7.")
+    if args.grid < 1:
+        raise SystemExit("--grid must be >= 1.")
 
     base_config = Path(args.base_config)
     base_cfg = load_config(base_config)
 
     base_beta = parse_float(base_cfg.get("beta")) or 0.05
     base_alpha_w = parse_float(base_cfg.get("alpha_w")) or 0.08
-    base_sigma_mu = parse_float(base_cfg.get("sigma_mu")) or 0.35
-    base_sigma_pi = parse_float(base_cfg.get("sigma_pi")) or 0.30
-    env_cfg = base_cfg.get("env", {}) if isinstance(base_cfg.get("env"), dict) else {}
-    base_p_mix = parse_float(env_cfg.get("p_mix") or base_cfg.get("p_mix")) or 0.05
+    base_theta_mu_offset_scale = parse_float(base_cfg.get("theta_mu_offset_scale")) or 0.0
 
     beta_values = parse_float_list(args.beta_values)
     if beta_values is None:
-        beta_values = scaled_grid(base_beta, DEFAULT_BETA_FACTORS, min_val=1e-5, max_val=1.0)
-        beta_values = pick_grid(beta_values, args.grid)
-    if len(beta_values) > 7:
-        raise SystemExit("beta_values length must be <= 7")
+        beta_min = max(1e-5, base_beta * min(DEFAULT_BETA_FACTORS))
+        beta_max = min(1.0, base_beta * max(DEFAULT_BETA_FACTORS))
+        beta_values = linspace_values(beta_min, beta_max, args.grid)
 
     alpha_values = parse_float_list(args.alpha_w_values)
     if alpha_values is None:
-        alpha_values = scaled_grid(base_alpha_w, DEFAULT_ALPHA_W_FACTORS, min_val=1e-6)
-        alpha_values = pick_grid(alpha_values, args.grid)
-    if len(alpha_values) > 7:
-        raise SystemExit("alpha_w_values length must be <= 7")
+        alpha_min = max(1e-6, base_alpha_w * min(DEFAULT_ALPHA_W_FACTORS))
+        alpha_max = max(alpha_min, base_alpha_w * max(DEFAULT_ALPHA_W_FACTORS))
+        alpha_values = logspace_values(alpha_min, alpha_max, args.grid)
 
-    offpolicy_values = parse_float_list(args.offpolicy_values)
-    if offpolicy_values is None:
-        if args.offpolicy_axis == "sigma_mu":
-            base_value = base_sigma_mu
-            offpolicy_values = scaled_grid(base_value, DEFAULT_SIGMA_FACTORS, min_val=1e-6)
-        elif args.offpolicy_axis == "sigma_pi":
-            base_value = base_sigma_pi
-            offpolicy_values = scaled_grid(base_value, DEFAULT_SIGMA_FACTORS, min_val=1e-6)
-        else:
-            base_value = base_p_mix
-            offpolicy_values = scaled_grid(base_value, DEFAULT_P_MIX_FACTORS, min_val=0.0, max_val=1.0)
-        offpolicy_values = pick_grid(offpolicy_values, args.grid)
-    if len(offpolicy_values) > 7:
-        raise SystemExit("offpolicy_values length must be <= 7")
+    theta_mu_offset_values = parse_float_list(args.theta_mu_offset_values)
+    if theta_mu_offset_values is None:
+        theta_min = DEFAULT_THETA_MU_OFFSET_MIN
+        theta_max = max(theta_min, DEFAULT_THETA_MU_OFFSET_MAX, base_theta_mu_offset_scale)
+        theta_mu_offset_values = linspace_values(theta_min, theta_max, args.grid)
 
     seeds = parse_float_list(args.seeds)
     seed_values: List[Optional[int]] = []
@@ -953,13 +1051,12 @@ def main() -> None:
         run_root = Path(args.run_root)
     else:
         timestamp = args.timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_root = Path(args.out_root) / timestamp
+        run_root = Path(args.out_root) / timestamp / "sweep"
 
     grid_info = {
         "beta_values": beta_values,
         "alpha_w_values": alpha_values,
-        "offpolicy_axis": args.offpolicy_axis,
-        "offpolicy_values": offpolicy_values,
+        "theta_mu_offset_scale_values": theta_mu_offset_values,
         "seed_values": seed_values,
         "base_config": str(base_config),
     }
@@ -967,11 +1064,12 @@ def main() -> None:
     if args.dry_run:
         print("Dry run sweep plan:")
         print(f"  run_root: {run_root}")
-        print(f"  total_grid: {len(beta_values) * len(alpha_values) * len(offpolicy_values) * len(seed_values)}")
+        print(
+            f"  total_grid: {len(beta_values) * len(alpha_values) * len(theta_mu_offset_values) * len(seed_values)}"
+        )
         print(f"  beta_values: {beta_values}")
         print(f"  alpha_w_values: {alpha_values}")
-        print(f"  offpolicy_axis: {args.offpolicy_axis}")
-        print(f"  offpolicy_values: {offpolicy_values}")
+        print(f"  theta_mu_offset_scale_values: {theta_mu_offset_values}")
         print(f"  seed_values: {seed_values}")
         return
 
@@ -999,21 +1097,19 @@ def main() -> None:
             "python": python_info(),
         },
     )
-    if args.pip_freeze:
-        (meta_dir / "pip_freeze.txt").write_text(pip_freeze())
+    write_meta_artifacts(meta_dir)
 
     (meta_dir / "commandline.txt").write_text(shlex.join(sys.argv))
 
     run_specs: List[RunSpec] = []
     for beta in beta_values:
         for alpha_w in alpha_values:
-            for offpolicy_value in offpolicy_values:
+            for theta_mu_offset_scale in theta_mu_offset_values:
                 for seed in seed_values:
                     params = {
                         "beta": beta,
                         "alpha_w": alpha_w,
-                        "offpolicy_axis": args.offpolicy_axis,
-                        "offpolicy_value": offpolicy_value,
+                        "theta_mu_offset_scale": theta_mu_offset_scale,
                         "seed": seed,
                     }
                     run_id = run_id_for(params)
@@ -1023,8 +1119,7 @@ def main() -> None:
                             run_id=run_id,
                             beta=beta,
                             alpha_w=alpha_w,
-                            offpolicy_axis=args.offpolicy_axis,
-                            offpolicy_value=offpolicy_value,
+                            theta_mu_offset_scale=theta_mu_offset_scale,
                             seed=seed,
                             output_dir=run_dir,
                         )
@@ -1037,8 +1132,7 @@ def main() -> None:
                 "run_id": spec.run_id,
                 "beta": spec.beta,
                 "alpha_w": spec.alpha_w,
-                "offpolicy_axis": spec.offpolicy_axis,
-                "offpolicy_value": spec.offpolicy_value,
+                "theta_mu_offset_scale": spec.theta_mu_offset_scale,
                 "seed": spec.seed,
                 "output_dir": str(spec.output_dir),
             }

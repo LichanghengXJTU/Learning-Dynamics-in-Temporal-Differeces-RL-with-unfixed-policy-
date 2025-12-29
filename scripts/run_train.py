@@ -27,6 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sigma-pi", type=float, default=None, help="Override target policy sigma.")
     parser.add_argument("--gamma", type=float, default=None, help="Override discount factor.")
     parser.add_argument("--theta-radius", type=float, default=None, help="Override policy parameter radius.")
+    parser.add_argument(
+        "--theta-mu-offset-scale",
+        type=float,
+        default=None,
+        help="Override theta_mu_offset_scale.",
+    )
     parser.add_argument("--outer-iters", type=int, default=None, help="Override outer training iterations.")
     parser.add_argument("--rho-clip", type=float, default=None, help="Override rho clip upper bound.")
     parser.add_argument("--disable-rho-clip", action="store_true", help="Disable rho clipping.")
@@ -65,6 +71,8 @@ def main() -> None:
         cfg["gamma"] = args.gamma
     if args.theta_radius is not None:
         cfg["theta_radius"] = args.theta_radius
+    if args.theta_mu_offset_scale is not None:
+        cfg["theta_mu_offset_scale"] = args.theta_mu_offset_scale
     if args.outer_iters is not None:
         cfg["outer_iters"] = args.outer_iters
     if args.rho_clip is not None:

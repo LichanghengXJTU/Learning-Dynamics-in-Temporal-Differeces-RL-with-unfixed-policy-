@@ -1,0 +1,53 @@
+{
+  "config": {
+    "seed": 0,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.0,
+    "beta": 1.0,
+    "sigma_mu": 0.2,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C0_onpolicy_critic_only",
+    "metrics": {
+      "td_loss_est": {
+        "start": 2.029265146208305e-05,
+        "end": 0.00019408701377630783,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 0.00014133214159133618,
+        "end": 0.0006667865442181497,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.008526777812785451,
+        "end": 0.04041438132983465,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.0,
+        "end": 1.0,
+        "trend": "flat"
+      },
+      "tracking_gap": {
+        "start": 0.0,
+        "end": 0.0,
+        "trend": "flat"
+      }
+    },
+    "evidence": {
+      "td_loss_down": false,
+      "w_alignment_up": true,
+      "rho_finite": true
+    },
+    "evidence_pass": false,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_172736/runs/C0_onpolicy_critic_only/metrics.csv"
+}

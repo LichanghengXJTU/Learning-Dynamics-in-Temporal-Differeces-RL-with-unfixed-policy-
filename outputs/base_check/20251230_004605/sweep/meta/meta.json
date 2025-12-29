@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-12-30T00:46:05",
+  "command": "scripts/sweep_stepC.py --timestamp 20251230_004605 --base-config configs/train_plateau.yaml --outer-iters 200 --grid 10 --jobs 1",
+  "git": {
+    "commit": "66f29ad2a9b3cdc8d0646df891245da08d7685ea",
+    "dirty": true
+  },
+  "python": {
+    "executable": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/.venv/bin/python",
+    "version": "3.14.2 (main, Dec  5 2025, 16:49:16) [Clang 17.0.0 (clang-1700.4.4.1)]"
+  }
+}

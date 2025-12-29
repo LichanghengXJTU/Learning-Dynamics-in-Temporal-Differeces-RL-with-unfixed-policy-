@@ -1,0 +1,61 @@
+{
+  "config": {
+    "seed": 55,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.0,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.1,
+    "beta": 0.2,
+    "sigma_mu": 0.2,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C5_gamma_zero_sanity",
+    "metrics": {
+      "td_loss_est": {
+        "start": 6.286725704368013e-05,
+        "end": 7.123143834107069e-05,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": -0.0019781366138229284,
+        "end": -0.001429902351719536,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": -0.11869244870334578,
+        "end": -0.08741346053018335,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.0,
+        "end": 0.9999944755862414,
+        "trend": "flat"
+      },
+      "tracking_gap": {
+        "start": 4.0887356597561806e-05,
+        "end": 9.403725950499022e-05,
+        "trend": "flat"
+      },
+      "theta_pi_norm": {
+        "start": 0.14170307808379404,
+        "end": 0.14175561136039225,
+        "trend": "flat"
+      },
+      "theta_mu_norm": {
+        "start": 0.14170573169051726,
+        "end": 0.14173229421809364,
+        "trend": "flat"
+      }
+    },
+    "evidence": {
+      "note": "evidence not enforced for this case"
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_180135/runs/C5_gamma_zero_sanity/metrics.csv"
+}

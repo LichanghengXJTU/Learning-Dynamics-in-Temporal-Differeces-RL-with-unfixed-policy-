@@ -1,0 +1,1313 @@
+diff --git a/tdrl_unfixed_ac/algos/train_unfixed_ac.py b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+index fd221c2..1ddcab3 100644
+--- a/tdrl_unfixed_ac/algos/train_unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+@@ -15,6 +15,7 @@ import numpy as np
+ from tdrl_unfixed_ac.algos.unfixed_ac import (
+     LinearGaussianPolicy,
+     apply_rho_clip,
++    batch_step_scale,
+     critic_value,
+     project_to_ball,
+ )
+@@ -45,6 +46,10 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+     "theta_radius": 4.0,
+     "theta_init_scale": 0.1,
+     "w_init_scale": 0.1,
++    "theta_mu_offset_scale": 0.0,
++    "squash_action": False,
++    "log_contract_metrics": False,
++    "require_teacher_reward": True,
+     "rho_clip": None,
+     "disable_rho_clip": False,
+     "checkpoint_every": 5,
+@@ -113,8 +118,8 @@ def load_train_config(path: Optional[str] = None) -> Dict[str, Any]:
+     return config
+ 
+ 
+-def _clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    if v_max <= 0.0:
++def _clip_action(action: np.ndarray, v_max: float, clip_action: bool) -> np.ndarray:
++    if not clip_action or v_max <= 0.0:
+         return action
+     return np.clip(action, -v_max, v_max)
+ 
+@@ -136,6 +141,23 @@ def _mc_bar_phi(
+     return np.mean(np.stack(phis, axis=0), axis=0)
+ 
+ 
++def _gaussian_kl_isotropic(
++    mean_p: np.ndarray,
++    sigma_p: float,
++    mean_q: np.ndarray,
++    sigma_q: float,
++) -> np.ndarray:
++    mean_p = np.asarray(mean_p, dtype=float)
++    mean_q = np.asarray(mean_q, dtype=float)
++    var_p = float(sigma_p) ** 2
++    var_q = float(sigma_q) ** 2
++    diff = mean_q - mean_p
++    diff_norm_sq = np.sum(diff * diff, axis=-1)
++    dim = mean_p.shape[-1]
++    log_ratio = np.log(var_q / var_p)
++    return 0.5 * (dim * (var_p / var_q) + diff_norm_sq / var_q - dim + dim * log_ratio)
++
++
+ def _json_ready(obj: Any) -> Any:
+     if isinstance(obj, np.ndarray):
+         return obj.tolist()
+@@ -191,6 +213,10 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     theta_radius = float(cfg.get("theta_radius", 0.0))
+     theta_init_scale = float(cfg.get("theta_init_scale", 0.1))
+     w_init_scale = float(cfg.get("w_init_scale", 0.1))
++    theta_mu_offset_scale = float(cfg.get("theta_mu_offset_scale", 0.0))
++    squash_action = bool(cfg.get("squash_action", False))
++    log_contract_metrics = bool(cfg.get("log_contract_metrics", False))
++    require_teacher_reward = bool(cfg.get("require_teacher_reward", True))
+     rho_clip = cfg.get("rho_clip", None)
+     disable_rho_clip = bool(cfg.get("disable_rho_clip", False))
+     checkpoint_every = int(cfg.get("checkpoint_every", 0))
+@@ -200,8 +226,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     output_dir = Path(cfg.get("output_dir", "outputs/unfixed_ac"))
+     resume = bool(cfg.get("resume", False))
+     resume_from = cfg.get("resume_from", None)
+-    total_steps = max(trajectories * horizon, 1)
+-    train_step_scale = alpha_w / total_steps
++    step_scale = batch_step_scale(trajectories, horizon)
++    train_step_scale = alpha_w * step_scale
+ 
+     output_dir.mkdir(parents=True, exist_ok=True)
+     checkpoint_dir = output_dir / "checkpoints"
+@@ -217,6 +243,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+         if env_cfg.get("seed") is None:
+             env_cfg["seed"] = seed
+         env = TorusGobletGhostEnv(config=env_cfg)
++        if require_teacher_reward and not env.use_teacher_reward:
++            raise ValueError("Teacher reward required: set env.use_teacher_reward=True.")
+ 
+         seeder = Seeder(seed)
+         init_rng = seeder.spawn()
+@@ -228,6 +256,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+ 
+         theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
+         theta_mu = np.array(theta_pi, copy=True)
++        if theta_mu_offset_scale > 0.0:
++            theta_mu += init_rng.normal(loc=0.0, scale=theta_mu_offset_scale, size=theta_mu.shape)
+         w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
+ 
+         logs = _load_existing_logs(csv_path)
+@@ -264,6 +294,7 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             k_mc=k_mc,
+             sigma_mu=sigma_mu,
+             sigma_pi=sigma_pi,
++            squash_action=squash_action,
+             rho_clip=rho_clip,
+             disable_rho_clip=disable_rho_clip,
+         )
+@@ -286,8 +317,18 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+         last_report_time = time.time()
+ 
+         for n in range(start_iter, outer_iters):
+-            mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu, v_max=env.v_max)
+-            pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi, v_max=env.v_max)
++            mu_policy = LinearGaussianPolicy(
++                theta=theta_mu,
++                sigma=sigma_mu,
++                v_max=env.v_max,
++                squash_action=squash_action,
++            )
++            pi_policy = LinearGaussianPolicy(
++                theta=theta_pi,
++                sigma=sigma_pi,
++                v_max=env.v_max,
++                squash_action=squash_action,
++            )
+ 
+             grad_w = np.zeros_like(w)
+             grad_theta = np.zeros_like(theta_pi)
+@@ -297,6 +338,10 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             rho_exec_vals = []
+             a_diff_vals = []
+             clip_count = 0
++            action_sum = np.zeros(action_dim, dtype=float)
++            action_sq_sum = np.zeros(action_dim, dtype=float)
++            action_count = 0
++            psi_samples = [] if log_contract_metrics else None
+ 
+             delta_cache = None
+             if probe_manager.enabled and probe_manager.q_kernel_enabled:
+@@ -312,11 +357,16 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+                 for t_idx in range(horizon):
+                     # ---- sample action from behavior policy mu ----
+                     a_exec = mu_policy.sample_action(psi, rollout_rng)
+-                    a_clip = _clip_action(a_exec, env.v_max)
++                    a_clip = _clip_action(a_exec, env.v_max, env.clip_action)
+                     a_diff = float(np.linalg.norm(a_exec - a_clip))
+                     a_diff_vals.append(a_diff)
+                     if a_diff > 1e-12:
+                         clip_count += 1
++                    if log_contract_metrics:
++                        action_sum += a_exec
++                        action_sq_sum += a_exec * a_exec
++                        action_count += 1
++                        psi_samples.append(np.array(psi, copy=True))
+ 
+                     # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
+                     u_exec = mu_policy.pre_squash(a_exec)
+@@ -365,9 +415,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             w_prev = np.array(w, copy=True)
+             theta_pi_prev = np.array(theta_pi, copy=True)
+ 
+-            scale = 1.0 / total_steps
+-            w = w + alpha_w * scale * grad_w
+-            theta_pi = theta_pi + alpha_pi * scale * grad_theta
++            w = w + alpha_w * step_scale * grad_w
++            theta_pi = theta_pi + alpha_pi * step_scale * grad_theta
+             theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
+ 
+             theta_pi = project_to_ball(theta_pi, theta_radius)
+@@ -443,6 +492,43 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
+             tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
+             w_norm = float(np.linalg.norm(w))
++            extra_metrics = {}
++            if log_contract_metrics:
++                w_norm_contract = float(np.linalg.norm(w) / np.sqrt(feature_dim))
++                theta_pi_norm = float(np.linalg.norm(theta_pi) / np.sqrt(actor_dim))
++                theta_mu_norm = float(np.linalg.norm(theta_mu) / np.sqrt(actor_dim))
++                tracking_gap_contract = float(np.linalg.norm(theta_pi - theta_mu) / np.sqrt(actor_dim))
++                w_dot_wr_over_n = float(np.dot(w, teacher_w) / feature_dim)
++                w_norm_denom = float(np.linalg.norm(teacher_w) * np.linalg.norm(w))
++                cos_w_wr = float(np.dot(w, teacher_w) / w_norm_denom) if w_norm_denom > 0 else float("nan")
++                if action_count > 0:
++                    mean_vec = action_sum / action_count
++                    var_vec = action_sq_sum / action_count - mean_vec * mean_vec
++                    action_mean = float(np.mean(mean_vec))
++                    action_var = float(np.mean(var_vec))
++                else:
++                    action_mean = float("nan")
++                    action_var = float("nan")
++                dist_action_kl = float("nan")
++                if psi_samples:
++                    psi_batch = np.stack(psi_samples, axis=0)
++                    mean_pi = (psi_batch @ theta_pi) / np.sqrt(actor_dim)
++                    mean_mu = (psi_batch @ theta_mu) / np.sqrt(actor_dim)
++                    kl_vals = _gaussian_kl_isotropic(mean_pi, sigma_pi, mean_mu, sigma_mu)
++                    if kl_vals.size:
++                        dist_action_kl = float(np.mean(kl_vals))
++                extra_metrics = {
++                    "w_norm_contract": w_norm_contract,
++                    "theta_pi_norm": theta_pi_norm,
++                    "theta_mu_norm": theta_mu_norm,
++                    "tracking_gap_contract": tracking_gap_contract,
++                    "w_dot_wr_over_n": w_dot_wr_over_n,
++                    "cos_w_wr": cos_w_wr,
++                    "action_mean": action_mean,
++                    "action_var": action_var,
++                    "dist_action_kl": dist_action_kl,
++                    "td_loss_est": float(td_loss / 2.0) if np.isfinite(td_loss) else float("nan"),
++                }
+ 
+             log_row = {
+                 "iter": n,
+@@ -476,6 +562,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+                 "delta_w_norm": delta_w_norm,
+                 **probe_defaults,
+             }
++            if extra_metrics:
++                log_row.update(extra_metrics)
+             probe_updates = probe_manager.maybe_run(
+                 iteration=n,
+                 td_loss=td_loss,
+diff --git a/tdrl_unfixed_ac/algos/unfixed_ac.py b/tdrl_unfixed_ac/algos/unfixed_ac.py
+index ca85193..79fc72e 100644
+--- a/tdrl_unfixed_ac/algos/unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/unfixed_ac.py
+@@ -44,6 +44,7 @@ class LinearGaussianPolicy:
+     theta: np.ndarray
+     sigma: float
+     v_max: float
++    squash_action: bool = False
+ 
+     def mean(self, psi: np.ndarray) -> np.ndarray:
+         return policy_mean(self.theta, psi)
+@@ -60,10 +61,14 @@ class LinearGaussianPolicy:
+         rng = rng if rng is not None else np.random.default_rng()
+         mean = self.mean(psi)
+         u = rng.normal(loc=mean, scale=self.sigma, size=self.action_dim)
+-        return _squash_action(u, self.v_max)
++        if self.squash_action:
++            return _squash_action(u, self.v_max)
++        return u
+ 
+     def pre_squash(self, action: np.ndarray) -> np.ndarray:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
++        if not self.squash_action:
++            return action
+         return _unsquash_action(action, self.v_max)
+ 
+     def log_prob_pre_squash(self, u: np.ndarray, psi: np.ndarray) -> float:
+@@ -74,6 +79,8 @@ class LinearGaussianPolicy:
+     def log_prob(self, action: np.ndarray, psi: np.ndarray) -> float:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+         mean = self.mean(psi)
++        if not self.squash_action:
++            return _gaussian_log_prob(action, mean, self.sigma)
+         u = _unsquash_action(action, self.v_max)
+         log_base = _gaussian_log_prob(u, mean, self.sigma)
+         log_det = float(np.sum(np.log(self.v_max) + _log1m_tanh2(u)))
+@@ -84,7 +91,7 @@ class LinearGaussianPolicy:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+         psi = np.asarray(psi, dtype=float).reshape(self.actor_dim)
+         mean = self.mean(psi)
+-        u = _unsquash_action(action, self.v_max)
++        u = self.pre_squash(action)
+         diff = u - mean
+         scale = 1.0 / (self.sigma * self.sigma * np.sqrt(self.actor_dim))
+         return np.outer(psi, diff) * scale
+@@ -117,6 +124,13 @@ def critic_value(w: np.ndarray, phi: np.ndarray) -> float:
+     return float(np.dot(w, phi) / np.sqrt(w.shape[0]))
+ 
+ 
++def batch_step_scale(trajectories: int, horizon: int) -> float:
++    """Compute 1 / (sqrt(B) * T) scaling for batch updates."""
++    b_val = max(int(trajectories), 1)
++    t_val = max(int(horizon), 1)
++    return 1.0 / (np.sqrt(b_val) * t_val)
++
++
+ def project_to_ball(theta: np.ndarray, radius: float) -> np.ndarray:
+     """Project theta onto L2 ball of given radius."""
+     if radius <= 0.0:
+diff --git a/tdrl_unfixed_ac/configs/default.yaml b/tdrl_unfixed_ac/configs/default.yaml
+index f0c45e9..be88823 100644
+--- a/tdrl_unfixed_ac/configs/default.yaml
++++ b/tdrl_unfixed_ac/configs/default.yaml
+@@ -2,6 +2,7 @@
+   "torus_size": 1.0,
+   "dt": 0.05,
+   "v_max": 0.4,
++  "clip_action": false,
+   "v_ghost": 0.3,
+   "sigma_env": 0.01,
+   "sigma_ghost": 0.01,
+diff --git a/tdrl_unfixed_ac/envs/torus_gg.py b/tdrl_unfixed_ac/envs/torus_gg.py
+index be0c04a..3bfd3f5 100644
+--- a/tdrl_unfixed_ac/envs/torus_gg.py
++++ b/tdrl_unfixed_ac/envs/torus_gg.py
+@@ -69,6 +69,7 @@ class TorusGobletGhostEnv:
+         self.p_type_positive = float(self.cfg["p_type_positive"])
+         self.type_resample_p = float(self.cfg["type_resample_p"])
+         self.use_teacher_reward = bool(self.cfg.get("use_teacher_reward", True))
++        self.clip_action = bool(self.cfg.get("clip_action", False))
+         self.feature_dim = int(self.cfg.get("feature_dim", 128))
+         self.actor_feature_dim = int(self.cfg.get("actor_feature_dim", 32))
+         self.c_psi = float(self.cfg.get("c_psi", 1.0))
+@@ -237,7 +238,7 @@ class TorusGobletGhostEnv:
+         return np.where(mask, 1.0, -1.0)
+ 
+     def _clip_action(self, action: np.ndarray) -> np.ndarray:
+-        if self.v_max <= 0.0:
++        if not self.clip_action or self.v_max <= 0.0:
+             return action
+         return np.clip(action, -self.v_max, self.v_max)
+ 
+diff --git a/tdrl_unfixed_ac/probes/common.py b/tdrl_unfixed_ac/probes/common.py
+index ed3c6b5..0710de0 100644
+--- a/tdrl_unfixed_ac/probes/common.py
++++ b/tdrl_unfixed_ac/probes/common.py
+@@ -10,9 +10,9 @@ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_cli
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+ 
+ 
+-def clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    """Clip action per component to [-v_max, v_max]."""
+-    if v_max <= 0.0:
++def clip_action(action: np.ndarray, v_max: float, clip_action: bool) -> np.ndarray:
++    """Clip action per component to [-v_max, v_max] if enabled."""
++    if not clip_action or v_max <= 0.0:
+         return action
+     return np.clip(action, -v_max, v_max)
+ 
+@@ -30,7 +30,7 @@ def mc_bar_phi(
+     phis = []
+     for _ in range(k_mc):
+         action = policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
++        action = clip_action(action, env.v_max, env.clip_action)
+         phis.append(env.compute_features(action)["phi"])
+     return np.mean(np.stack(phis, axis=0), axis=0)
+ 
+@@ -61,7 +61,7 @@ def collect_critic_batch(
+ 
+     for _ in range(batch_size):
+         a = mu_policy.sample_action(psi, rng)
+-        a = clip_action(a, env.v_max)
++        a = clip_action(a, env.v_max, env.clip_action)
+ 
+         logp_pi = pi_policy.log_prob(a, psi)
+         logp_mu = mu_policy.log_prob(a, psi)
+diff --git a/tdrl_unfixed_ac/probes/distribution_probe.py b/tdrl_unfixed_ac/probes/distribution_probe.py
+index 52eb3b0..cb77294 100644
+--- a/tdrl_unfixed_ac/probes/distribution_probe.py
++++ b/tdrl_unfixed_ac/probes/distribution_probe.py
+@@ -31,7 +31,7 @@ def _collect_state_features(
+         psi = features["psi"]
+         psi_vecs.append(psi)
+         action = policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
++        action = clip_action(action, env.v_max, env.clip_action)
+         _, _, terminated, truncated, _ = env.step(action)
+         if terminated or truncated:
+             raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+@@ -60,7 +60,7 @@ def _collect_rho_samples(
+     rhos = []
+     for _ in range(num_samples):
+         action = mu_policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
++        action = clip_action(action, env.v_max, env.clip_action)
+         logp_pi = pi_policy.log_prob(action, psi)
+         logp_mu = mu_policy.log_prob(action, psi)
+         rho_raw = float(np.exp(logp_pi - logp_mu))
+@@ -173,6 +173,7 @@ def run_distribution_probe(
+     theta_pi: np.ndarray,
+     sigma_mu: float,
+     sigma_pi: float,
++    squash_action: bool,
+     num_samples: int,
+     seed: Optional[int],
+     action_samples: int = 64,
+@@ -188,8 +189,18 @@ def run_distribution_probe(
+     env_pi = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 13))
+     env_rho = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 17))
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env_mu.v_max)
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env_mu.v_max)
++    mu_policy = LinearGaussianPolicy(
++        theta=np.array(theta_mu, copy=True),
++        sigma=float(sigma_mu),
++        v_max=env_mu.v_max,
++        squash_action=bool(squash_action),
++    )
++    pi_policy = LinearGaussianPolicy(
++        theta=np.array(theta_pi, copy=True),
++        sigma=float(sigma_pi),
++        v_max=env_mu.v_max,
++        squash_action=bool(squash_action),
++    )
+ 
+     obs_mu, psi_mu = _collect_state_features(env_mu, mu_policy, rng_mu, num_samples)
+     obs_pi, psi_pi = _collect_state_features(env_pi, pi_policy, rng_pi, num_samples)
+diff --git a/tdrl_unfixed_ac/probes/fixed_point_probe.py b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+index 00782d3..5dacd1b 100644
+--- a/tdrl_unfixed_ac/probes/fixed_point_probe.py
++++ b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+@@ -19,6 +19,7 @@ def run_fixed_point_probe(
+     w_init: np.ndarray,
+     sigma_mu: float,
+     sigma_pi: float,
++    squash_action: bool,
+     alpha_w: float,
+     gamma: float,
+     k_mc: int,
+@@ -33,8 +34,18 @@ def run_fixed_point_probe(
+     rng = np.random.default_rng(seed)
+     env = TorusGobletGhostEnv(config=env_config, rng=rng)
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env.v_max)
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env.v_max)
++    mu_policy = LinearGaussianPolicy(
++        theta=np.array(theta_mu, copy=True),
++        sigma=float(sigma_mu),
++        v_max=env.v_max,
++        squash_action=bool(squash_action),
++    )
++    pi_policy = LinearGaussianPolicy(
++        theta=np.array(theta_pi, copy=True),
++        sigma=float(sigma_pi),
++        v_max=env.v_max,
++        squash_action=bool(squash_action),
++    )
+ 
+     batch = collect_critic_batch(
+         env,
+diff --git a/tdrl_unfixed_ac/probes/manager.py b/tdrl_unfixed_ac/probes/manager.py
+index 3bc5692..550b0e3 100644
+--- a/tdrl_unfixed_ac/probes/manager.py
++++ b/tdrl_unfixed_ac/probes/manager.py
+@@ -33,6 +33,7 @@ class ProbeManager:
+         k_mc: int,
+         sigma_mu: float,
+         sigma_pi: float,
++        squash_action: bool,
+         rho_clip: Optional[float],
+         disable_rho_clip: bool,
+     ) -> None:
+@@ -66,6 +67,7 @@ class ProbeManager:
+         self.k_mc = int(k_mc)
+         self.sigma_mu = float(sigma_mu)
+         self.sigma_pi = float(sigma_pi)
++        self.squash_action = bool(squash_action)
+         self.rho_clip = rho_clip
+         self.disable_rho_clip = bool(disable_rho_clip)
+ 
+@@ -143,6 +145,7 @@ class ProbeManager:
+                     w_init=w,
+                     sigma_mu=self.sigma_mu,
+                     sigma_pi=self.sigma_pi,
++                    squash_action=self.squash_action,
+                     alpha_w=float(fixed_cfg["alpha_w"]),
+                     gamma=float(fixed_cfg["gamma"]),
+                     k_mc=int(fixed_cfg["k_mc"]),
+@@ -204,6 +207,7 @@ class ProbeManager:
+                     theta_pi=theta_pi,
+                     sigma_mu=self.sigma_mu,
+                     sigma_pi=self.sigma_pi,
++                    squash_action=self.squash_action,
+                     alpha_w=float(stability_cfg["alpha_w"]),
+                     train_step_scale=self.train_step_scale,
+                     gamma=float(stability_cfg["gamma"]),
+@@ -244,6 +248,7 @@ class ProbeManager:
+                     theta_pi=theta_pi,
+                     sigma_mu=self.sigma_mu,
+                     sigma_pi=self.sigma_pi,
++                    squash_action=self.squash_action,
+                     num_samples=int(dist_cfg["num_samples"]),
+                     action_samples=int(dist_cfg["action_samples"]),
+                     rho_clip=self.rho_clip,
+diff --git a/tdrl_unfixed_ac/probes/stability_probe.py b/tdrl_unfixed_ac/probes/stability_probe.py
+index 58c53d9..438a53d 100644
+--- a/tdrl_unfixed_ac/probes/stability_probe.py
++++ b/tdrl_unfixed_ac/probes/stability_probe.py
+@@ -18,6 +18,7 @@ def run_stability_probe(
+     theta_pi: np.ndarray,
+     sigma_mu: float,
+     sigma_pi: float,
++    squash_action: bool,
+     alpha_w: float,
+     train_step_scale: float,
+     gamma: float,
+@@ -31,8 +32,18 @@ def run_stability_probe(
+     """Estimate local amplification (spectral radius proxy) for critic updates."""
+     rng = np.random.default_rng(seed)
+     v_max = float(env_config.get("v_max", 1.0))
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=v_max)
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=v_max)
++    mu_policy = LinearGaussianPolicy(
++        theta=np.array(theta_mu, copy=True),
++        sigma=float(sigma_mu),
++        v_max=v_max,
++        squash_action=bool(squash_action),
++    )
++    pi_policy = LinearGaussianPolicy(
++        theta=np.array(theta_pi, copy=True),
++        sigma=float(sigma_pi),
++        v_max=v_max,
++        squash_action=bool(squash_action),
++    )
+ 
+     def _estimate_proxy(batch: Dict[str, np.ndarray], local_rng: np.random.Generator) -> float:
+         phi = batch["phi"]
+diff --git a/tdrl_unfixed_ac/reporting/run_report.py b/tdrl_unfixed_ac/reporting/run_report.py
+index 446ce25..48f485a 100644
+--- a/tdrl_unfixed_ac/reporting/run_report.py
++++ b/tdrl_unfixed_ac/reporting/run_report.py
+@@ -317,10 +317,9 @@ def _train_step_scale(cfg: Dict[str, Any]) -> Optional[float]:
+         horizon = int(cfg.get("horizon", 0) or 0)
+     except (TypeError, ValueError):
+         return None
+-    total_steps = max(trajectories * horizon, 0)
+-    if alpha_w <= 0.0 or total_steps <= 0:
++    if alpha_w <= 0.0 or trajectories <= 0 or horizon <= 0:
+         return None
+-    return alpha_w / total_steps
++    return alpha_w / (math.sqrt(trajectories) * horizon)
+ 
+ 
+ def _get_git_commit(run_dir: Path) -> Optional[str]:
+@@ -559,6 +558,39 @@ def _health_checks(
+             "applicable": True,
+         }
+ 
++    # sigma_condition
++    sigma_mu = cfg.get("sigma_mu")
++    sigma_pi = cfg.get("sigma_pi")
++    try:
++        sigma_mu_val = float(sigma_mu) if sigma_mu is not None else None
++        sigma_pi_val = float(sigma_pi) if sigma_pi is not None else None
++    except (TypeError, ValueError):
++        sigma_mu_val = None
++        sigma_pi_val = None
++    if sigma_mu_val is None or sigma_pi_val is None or sigma_mu_val <= 0.0 or sigma_pi_val <= 0.0:
++        checks["sigma_condition"] = {
++            "pass": True,
++            "reason": "sigma parameters unavailable",
++            "observed": {"sigma_mu": sigma_mu, "sigma_pi": sigma_pi},
++            "applicable": False,
++        }
++    else:
++        lhs = sigma_pi_val * sigma_pi_val
++        rhs = 2.0 * sigma_mu_val * sigma_mu_val
++        passed = lhs < rhs
++        reason = "sigma_pi^2 < 2 sigma_mu^2" if passed else "sigma_pi^2 >= 2 sigma_mu^2"
++        checks["sigma_condition"] = {
++            "pass": passed,
++            "reason": reason,
++            "observed": {
++                "sigma_mu": sigma_mu_val,
++                "sigma_pi": sigma_pi_val,
++                "sigma_pi2": lhs,
++                "two_sigma_mu2": rhs,
++            },
++            "applicable": True,
++        }
++
+     # on_policy_expected
+     check_name = cfg.get("check_name")
+     applicable = _is_on_policy_run(cfg)
+diff --git a/scripts/base_check/run_contract_tests.py b/scripts/base_check/run_contract_tests.py
+new file mode 100644
+index 0000000..b364c7f
+--- /dev/null
++++ b/scripts/base_check/run_contract_tests.py
+@@ -0,0 +1,369 @@
++#!/usr/bin/env python3
++"""Run contract unit tests for the unfixed actor-critic implementation."""
++
++from __future__ import annotations
++
++import argparse
++import inspect
++import json
++import math
++import sys
++from pathlib import Path
++from typing import Any, Dict, List, Optional, Tuple
++
++import numpy as np
++
++ROOT = Path(__file__).resolve().parents[2]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from tdrl_unfixed_ac.algos.train_unfixed_ac import train_unfixed_ac
++from tdrl_unfixed_ac.algos.unfixed_ac import (
++    LinearGaussianPolicy,
++    batch_step_scale,
++    critic_value,
++    importance_ratio,
++)
++
++
++class Node:
++    """Minimal reverse-mode autodiff node for numpy arrays."""
++
++    def __init__(
++        self,
++        value: np.ndarray,
++        parents: Optional[List[Tuple["Node", Any]]] = None,
++    ) -> None:
++        self.value = np.asarray(value, dtype=float)
++        self.parents = parents or []
++        self.grad: Optional[np.ndarray] = None
++
++    def __add__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        out = Node(self.value + other_val)
++        parents = [(self, lambda g: g)]
++        if other_node is not None:
++            parents.append((other_node, lambda g: g))
++        out.parents = parents
++        return out
++
++    def __radd__(self, other: Any) -> "Node":
++        return self.__add__(other)
++
++    def __sub__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        out = Node(self.value - other_val)
++        parents = [(self, lambda g: g)]
++        if other_node is not None:
++            parents.append((other_node, lambda g: -g))
++        out.parents = parents
++        return out
++
++    def __rsub__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        out = Node(other_val - self.value)
++        parents = [(self, lambda g: -g)]
++        if other_node is not None:
++            parents.append((other_node, lambda g: g))
++        out.parents = parents
++        return out
++
++    def __mul__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        out = Node(self.value * other_val)
++        parents = [(self, lambda g: g * other_val)]
++        if other_node is not None:
++            parents.append((other_node, lambda g: g * self.value))
++        out.parents = parents
++        return out
++
++    def __rmul__(self, other: Any) -> "Node":
++        return self.__mul__(other)
++
++    def __truediv__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        out = Node(self.value / other_val)
++        parents = [(self, lambda g: g / other_val)]
++        if other_node is not None:
++            parents.append((other_node, lambda g: -g * self.value / (other_val * other_val)))
++        out.parents = parents
++        return out
++
++    def __rtruediv__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        out = Node(other_val / self.value)
++        parents = [(self, lambda g: -g * other_val / (self.value * self.value))]
++        if other_node is not None:
++            parents.append((other_node, lambda g: g / self.value))
++        out.parents = parents
++        return out
++
++    def __matmul__(self, other: Any) -> "Node":
++        other_val, other_node = _to_value(other)
++        if other_node is not None:
++            raise ValueError("Node @ Node not supported in this minimal autodiff.")
++        out = Node(self.value @ other_val)
++
++        def _grad_matmul(g: np.ndarray) -> np.ndarray:
++            g = np.asarray(g, dtype=float)
++            return np.outer(g, other_val)
++
++        out.parents = [(self, _grad_matmul)]
++        return out
++
++    @property
++    def T(self) -> "Node":
++        out = Node(self.value.T)
++        out.parents = [(self, lambda g: np.asarray(g, dtype=float).T)]
++        return out
++
++    def sum(self) -> "Node":
++        out = Node(np.array(self.value.sum(), dtype=float))
++        out.parents = [(self, lambda g: np.ones_like(self.value) * g)]
++        return out
++
++    def backward(self, grad: Optional[np.ndarray] = None) -> None:
++        topo: List[Node] = []
++        visited: set[int] = set()
++
++        def _build(node: Node) -> None:
++            node_id = id(node)
++            if node_id in visited:
++                return
++            visited.add(node_id)
++            for parent, _ in node.parents:
++                _build(parent)
++            topo.append(node)
++
++        _build(self)
++        for node in topo:
++            node.grad = np.zeros_like(node.value, dtype=float)
++
++        if grad is None:
++            self.grad = np.ones_like(self.value, dtype=float)
++        else:
++            self.grad = np.asarray(grad, dtype=float)
++
++        for node in reversed(topo):
++            if node.grad is None:
++                continue
++            for parent, grad_fn in node.parents:
++                parent.grad = parent.grad + grad_fn(node.grad)
++
++
++def _to_value(obj: Any) -> Tuple[np.ndarray, Optional[Node]]:
++    if isinstance(obj, Node):
++        return obj.value, obj
++    return np.asarray(obj, dtype=float), None
++
++
++def _autograd_log_prob_grad(
++    theta: np.ndarray,
++    psi: np.ndarray,
++    action: np.ndarray,
++    sigma: float,
++) -> Tuple[float, np.ndarray]:
++    theta_node = Node(theta)
++    action_node = Node(action)
++    mean = (theta_node.T @ psi) / math.sqrt(theta.shape[0])
++    diff = action_node - mean
++    sq = (diff * diff).sum()
++    var = float(sigma) ** 2
++    log_norm = -0.5 * action.size * math.log(2.0 * math.pi * var)
++    log_prob = log_norm - 0.5 * sq / var
++    log_prob.backward()
++    log_prob_val = float(np.asarray(log_prob.value, dtype=float).reshape(()))
++    return log_prob_val, np.asarray(theta_node.grad, dtype=float)
++
++
++def _write_report(path: Path, results: List[Dict[str, Any]]) -> None:
++    lines = ["# Contract Tests Report", ""]
++    lines.append("| test | status | error | threshold | details |")
++    lines.append("| --- | --- | --- | --- | --- |")
++    for result in results:
++        status = "PASS" if result["pass"] else "FAIL"
++        error = _fmt(result.get("error"))
++        threshold = _fmt(result.get("threshold"))
++        details = result.get("details", "")
++        lines.append(f"| {result['name']} | {status} | {error} | {threshold} | {details} |")
++    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
++
++
++def _fmt(value: Any) -> str:
++    if value is None:
++        return "-"
++    if isinstance(value, (float, np.floating)):
++        if math.isnan(value) or math.isinf(value):
++            return str(value)
++        return f"{value:.4g}"
++    return str(value)
++
++
++def test_score_autograd(seed: int) -> Dict[str, Any]:
++    rng = np.random.default_rng(seed)
++    actor_dim = 5
++    action_dim = 3
++    theta = rng.normal(size=(actor_dim, action_dim))
++    psi = rng.normal(size=(actor_dim,))
++    action = rng.normal(size=(action_dim,))
++    sigma = 0.7
++
++    policy = LinearGaussianPolicy(theta=theta, sigma=sigma, v_max=1.0, squash_action=False)
++    mean = policy.mean(psi)
++    g_analytic = np.outer(psi, action - mean) / (sigma * sigma * math.sqrt(actor_dim))
++
++    _, g_auto = _autograd_log_prob_grad(theta, psi, action, sigma)
++    err = float(np.max(np.abs(g_analytic - g_auto)))
++    threshold = 1e-6
++    return {
++        "name": "T1_score_autograd",
++        "pass": err < threshold,
++        "error": err,
++        "threshold": threshold,
++        "details": f"actor_dim={actor_dim}, action_dim={action_dim}",
++    }
++
++
++def test_rho_ratio(seed: int) -> Dict[str, Any]:
++    rng = np.random.default_rng(seed + 11)
++    actor_dim = 4
++    action_dim = 2
++    theta_mu = rng.normal(size=(actor_dim, action_dim))
++    theta_pi = rng.normal(size=(actor_dim, action_dim))
++    psi = rng.normal(size=(actor_dim,))
++    action = rng.normal(size=(action_dim,))
++    sigma_mu = 0.5
++    sigma_pi = 0.3
++
++    mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu, v_max=1.0, squash_action=False)
++    pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi, v_max=1.0, squash_action=False)
++    logp_pi = pi_policy.log_prob(action, psi)
++    logp_mu = mu_policy.log_prob(action, psi)
++    rho_analytic = math.exp(logp_pi - logp_mu)
++    rho_code = importance_ratio(logp_pi, logp_mu)
++    rel_err = abs(rho_code - rho_analytic) / max(1.0, abs(rho_analytic))
++    threshold = 1e-6
++    return {
++        "name": "T2_rho_ratio",
++        "pass": rel_err < threshold,
++        "error": rel_err,
++        "threshold": threshold,
++        "details": f"rho={rho_code:.4g}, log_rho={(logp_pi - logp_mu):.4g}",
++    }
++
++
++def test_td_error(seed: int) -> Dict[str, Any]:
++    rng = np.random.default_rng(seed + 23)
++    feature_dim = 7
++    w = rng.normal(size=(feature_dim,))
++    w_r = rng.normal(size=(feature_dim,))
++    phi = rng.normal(size=(feature_dim,))
++    bar_phi = rng.normal(size=(feature_dim,))
++    gamma = 0.9
++
++    reward = float(np.dot(w_r, phi) / math.sqrt(feature_dim))
++    delta_code = reward + gamma * critic_value(w, bar_phi) - critic_value(w, phi)
++    delta_manual = float((np.dot(w_r - w, phi) + gamma * np.dot(w, bar_phi)) / math.sqrt(feature_dim))
++    err = float(abs(delta_code - delta_manual))
++    threshold = 1e-7
++    return {
++        "name": "T3_td_error",
++        "pass": err < threshold,
++        "error": err,
++        "threshold": threshold,
++        "details": f"delta_code={delta_code:.4g}, delta_manual={delta_manual:.4g}",
++    }
++
++
++def test_critic_update_scaling(seed: int) -> Dict[str, Any]:
++    rng = np.random.default_rng(seed + 37)
++    b_val = 4
++    t_val = 3
++    feature_dim = 6
++    w = rng.normal(size=(feature_dim,))
++    phi = rng.normal(size=(b_val * t_val, feature_dim))
++    rho = rng.normal(size=(b_val * t_val,))
++    delta = rng.normal(size=(b_val * t_val,))
++    alpha_w = 0.2
++
++    grad = (rho * delta)[:, None] * phi
++    grad_sum = np.sum(grad, axis=0)
++    manual_scale = 1.0 / (math.sqrt(b_val) * t_val)
++    code_scale = batch_step_scale(b_val, t_val)
++    w_next_manual = w + alpha_w * manual_scale * grad_sum
++    w_next_code = w + alpha_w * code_scale * grad_sum
++    err = float(np.max(np.abs(w_next_manual - w_next_code)))
++    threshold = 1e-7
++
++    scale_b1 = batch_step_scale(1, t_val)
++    scale_b4 = batch_step_scale(4, t_val)
++    ratio = scale_b4 / scale_b1 if scale_b1 > 0 else float("nan")
++    ratio_err = float(abs(ratio - 0.5))
++    ratio_ok = ratio_err < 1e-12
++
++    return {
++        "name": "T4_critic_update_scaling",
++        "pass": err < threshold and ratio_ok,
++        "error": err,
++        "threshold": threshold,
++        "details": f"scale_ratio={ratio:.4g}, ratio_err={ratio_err:.4g}",
++    }
++
++
++def test_semi_gradient() -> Dict[str, Any]:
++    src = inspect.getsource(train_unfixed_ac)
++    uses_autograd = ("torch" in src) or ("jax" in src)
++    passed = not uses_autograd
++    return {
++        "name": "T5_semi_gradient",
++        "pass": passed,
++        "error": 0.0 if passed else 1.0,
++        "threshold": 0.0,
++        "details": "numpy update; no autograd frameworks imported" if passed else "autograd detected in training loop",
++    }
++
++
++def run(base_dir: Path, seed: int) -> int:
++    tests_dir = base_dir / "tests"
++    tests_dir.mkdir(parents=True, exist_ok=True)
++    log_path = tests_dir / "contract_tests.log"
++    results_path = tests_dir / "contract_tests_results.json"
++    report_path = tests_dir / "contract_tests_report.md"
++
++    results = [
++        test_score_autograd(seed),
++        test_rho_ratio(seed),
++        test_td_error(seed),
++        test_critic_update_scaling(seed),
++        test_semi_gradient(),
++    ]
++
++    with log_path.open("w", encoding="utf-8") as handle:
++        for result in results:
++            status = "PASS" if result["pass"] else "FAIL"
++            handle.write(f"{result['name']}: {status} (error={_fmt(result.get('error'))})\n")
++
++    results_payload = {
++        "seed": seed,
++        "tests": results,
++        "summary": {
++            "passed": all(r["pass"] for r in results),
++            "num_tests": len(results),
++        },
++    }
++    results_path.write_text(json.dumps(results_payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
++    _write_report(report_path, results)
++    return 0 if results_payload["summary"]["passed"] else 1
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Run contract unit tests.")
++    parser.add_argument("--base-dir", type=str, required=True, help="Base output dir (outputs/base_check/<TS>).")
++    parser.add_argument("--seed", type=int, default=0, help="Random seed for deterministic tests.")
++    args = parser.parse_args()
++    base_dir = Path(args.base_dir)
++    raise SystemExit(run(base_dir, args.seed))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/base_check/run_base_check_matrix.py b/scripts/base_check/run_base_check_matrix.py
+new file mode 100644
+index 0000000..7d4bf43
+--- /dev/null
++++ b/scripts/base_check/run_base_check_matrix.py
+@@ -0,0 +1,365 @@
++#!/usr/bin/env python3
++"""Run base-check matrix for the unfixed actor-critic implementation."""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import sys
++from pathlib import Path
++from typing import Any, Dict, List, Optional
++
++import numpy as np
++
++ROOT = Path(__file__).resolve().parents[2]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from tdrl_unfixed_ac.algos.train_unfixed_ac import load_train_config, train_unfixed_ac
++
++
++def _deep_update(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
++    for key, value in updates.items():
++        if isinstance(value, dict) and isinstance(base.get(key), dict):
++            _deep_update(base[key], value)
++        else:
++            base[key] = value
++    return base
++
++
++def _float_or_nan(value: Any) -> float:
++    try:
++        return float(value)
++    except Exception:
++        return float("nan")
++
++
++def _finite(value: float) -> bool:
++    return math.isfinite(value)
++
++
++def _trend(values: List[float]) -> str:
++    arr = np.asarray(values, dtype=float)
++    arr = arr[np.isfinite(arr)]
++    if arr.size < 2:
++        return "flat"
++    x = np.arange(arr.size)
++    slope = float(np.polyfit(x, arr, 1)[0])
++    tol = 1e-6 * max(1.0, float(np.mean(np.abs(arr))))
++    if slope > tol:
++        return "up"
++    if slope < -tol:
++        return "down"
++    return "flat"
++
++
++def _series_stats(values: List[float]) -> Dict[str, float]:
++    arr = np.asarray(values, dtype=float)
++    arr = arr[np.isfinite(arr)]
++    if arr.size == 0:
++        return {"start": float("nan"), "end": float("nan"), "trend": "flat"}
++    return {"start": float(arr[0]), "end": float(arr[-1]), "trend": _trend(arr.tolist())}
++
++
++def _write_csv(path: Path, rows: List[Dict[str, Any]], fieldnames: List[str]) -> None:
++    with path.open("w", newline="", encoding="utf-8") as handle:
++        writer = csv.DictWriter(handle, fieldnames=fieldnames)
++        writer.writeheader()
++        writer.writerows(rows)
++
++
++def _run_case(case: Dict[str, Any], base_cfg: Dict[str, Any], runs_dir: Path, seed: int) -> Dict[str, Any]:
++    cfg = json.loads(json.dumps(base_cfg))
++    cfg["output_dir"] = str(runs_dir / case["name"])
++    cfg["seed"] = seed
++    cfg["log_contract_metrics"] = True
++    cfg["squash_action"] = False
++    cfg["require_teacher_reward"] = True
++    cfg["disable_rho_clip"] = True
++    cfg["rho_clip"] = None
++    cfg["probes"] = {"enabled": False}
++    cfg["check_name"] = case["name"]
++    cfg.setdefault("env", {})
++    cfg["env"]["clip_action"] = False
++    cfg["env"].setdefault("p_mix", 0.0)
++    cfg["env"].setdefault("sigma_env", 0.0)
++    cfg["env"].setdefault("sigma_ghost", 0.0)
++
++    _deep_update(cfg, case.get("overrides", {}))
++
++    result = train_unfixed_ac(cfg)
++    logs = result.get("logs", [])
++    metrics_rows: List[Dict[str, Any]] = []
++    for row in logs:
++        metrics_rows.append(
++            {
++                "iter": row.get("iter"),
++                "td_loss_est": row.get("td_loss_est", _float_or_nan(row.get("td_loss")) / 2.0),
++                "cos_w_wr": row.get("cos_w_wr"),
++                "w_dot_wr_over_n": row.get("w_dot_wr_over_n"),
++                "w_norm": row.get("w_norm_contract"),
++                "theta_pi_norm": row.get("theta_pi_norm"),
++                "theta_mu_norm": row.get("theta_mu_norm"),
++                "tracking_gap": row.get("tracking_gap_contract"),
++                "mean_rho2": row.get("mean_rho2"),
++                "p95_rho2": row.get("p95_rho2"),
++                "action_mean": row.get("action_mean"),
++                "action_var": row.get("action_var"),
++                "dist_action_kl": row.get("dist_action_kl"),
++            }
++        )
++
++    case_dir = Path(cfg["output_dir"])
++    case_dir.mkdir(parents=True, exist_ok=True)
++    metrics_path = case_dir / "metrics.csv"
++    fieldnames = list(metrics_rows[0].keys()) if metrics_rows else []
++    if fieldnames:
++        _write_csv(metrics_path, metrics_rows, fieldnames)
++
++    return {
++        "config": cfg,
++        "metrics_rows": metrics_rows,
++        "metrics_path": str(metrics_path),
++    }
++
++
++def _build_run_report(case: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
++    cfg = payload["config"]
++    rows = payload["metrics_rows"]
++    case_dir = Path(cfg["output_dir"])
++
++    metrics = {
++        "td_loss_est": _series_stats([_float_or_nan(r.get("td_loss_est")) for r in rows]),
++        "w_dot_wr_over_n": _series_stats([_float_or_nan(r.get("w_dot_wr_over_n")) for r in rows]),
++        "cos_w_wr": _series_stats([_float_or_nan(r.get("cos_w_wr")) for r in rows]),
++        "mean_rho2": _series_stats([_float_or_nan(r.get("mean_rho2")) for r in rows]),
++        "tracking_gap": _series_stats([_float_or_nan(r.get("tracking_gap")) for r in rows]),
++        "theta_pi_norm": _series_stats([_float_or_nan(r.get("theta_pi_norm")) for r in rows]),
++        "theta_mu_norm": _series_stats([_float_or_nan(r.get("theta_mu_norm")) for r in rows]),
++    }
++
++    td_start = metrics["td_loss_est"]["start"]
++    td_end = metrics["td_loss_est"]["end"]
++    w_start = metrics["w_dot_wr_over_n"]["start"]
++    w_end = metrics["w_dot_wr_over_n"]["end"]
++    rho_end = metrics["mean_rho2"]["end"]
++    tracking_end = metrics["tracking_gap"]["end"]
++    pi_norm_start = metrics["theta_pi_norm"]["start"]
++    pi_norm_end = metrics["theta_pi_norm"]["end"]
++
++    evidence_mode = case.get("evidence_mode", "none")
++    evidence: Dict[str, Any] = {}
++    evidence_pass = True
++    if evidence_mode == "critic_only":
++        evidence = {
++            "td_loss_down": _finite(td_start) and _finite(td_end) and td_end < td_start,
++            "w_alignment_up": _finite(w_start) and _finite(w_end) and w_end > w_start,
++            "rho_finite": _finite(rho_end),
++        }
++        evidence_pass = all(evidence.values())
++    elif evidence_mode == "actor_on":
++        theta_pi_changed = _finite(pi_norm_start) and _finite(pi_norm_end) and abs(pi_norm_end - pi_norm_start) > 1e-6
++        tracking_gap_ok = _finite(tracking_end) and tracking_end <= 1e-3
++        rho_near_one = _finite(rho_end) and abs(rho_end - 1.0) <= 0.05
++        evidence = {
++            "theta_pi_changed": theta_pi_changed,
++            "tracking_gap_small": tracking_gap_ok,
++            "rho_near_one": rho_near_one,
++        }
++        evidence_pass = all(evidence.values())
++    else:
++        evidence = {"note": "evidence not enforced for this case"}
++
++    sigma_mu = _float_or_nan(cfg.get("sigma_mu"))
++    sigma_pi = _float_or_nan(cfg.get("sigma_pi"))
++    sigma_condition = (
++        _finite(sigma_mu)
++        and _finite(sigma_pi)
++        and sigma_mu > 0.0
++        and sigma_pi > 0.0
++        and (sigma_pi * sigma_pi < 2.0 * sigma_mu * sigma_mu)
++    )
++
++    summary = {
++        "case": case["name"],
++        "metrics": metrics,
++        "evidence": evidence,
++        "evidence_pass": evidence_pass,
++        "sigma_condition": sigma_condition,
++    }
++
++    config_summary = {
++        "seed": cfg.get("seed"),
++        "N": cfg.get("env", {}).get("feature_dim", cfg.get("feature_dim")),
++        "N_act": cfg.get("env", {}).get("actor_feature_dim", cfg.get("actor_feature_dim")),
++        "B": cfg.get("trajectories"),
++        "T": cfg.get("horizon"),
++        "gamma": cfg.get("gamma"),
++        "alpha_w": cfg.get("alpha_w"),
++        "alpha_pi": cfg.get("alpha_pi"),
++        "beta": cfg.get("beta"),
++        "sigma_mu": cfg.get("sigma_mu"),
++        "sigma_pi": cfg.get("sigma_pi"),
++    }
++
++    report = {
++        "config": config_summary,
++        "summary": summary,
++        "metrics_path": payload["metrics_path"],
++    }
++
++    report_path = case_dir / "run_report.json"
++    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
++
++    md_lines = ["# Base-Check Run Report", ""]
++    md_lines.append("## Config")
++    md_lines.append(
++        "- "
++        + ", ".join(
++            f"{key}={config_summary.get(key)}"
++            for key in ["N", "N_act", "B", "T", "gamma", "alpha_w", "alpha_pi", "beta", "sigma_mu", "sigma_pi", "seed"]
++        )
++    )
++    md_lines.append("")
++    md_lines.append("## Key Metrics (start -> end, trend)")
++    for key in ["td_loss_est", "w_dot_wr_over_n", "cos_w_wr", "mean_rho2", "tracking_gap"]:
++        stats = metrics[key]
++        md_lines.append(
++            f"- {key}: {_fmt(stats['start'])} -> {_fmt(stats['end'])} ({stats['trend']})"
++        )
++    md_lines.append("")
++    md_lines.append("## Learning Evidence")
++    if evidence_mode == "critic_only":
++        md_lines.append(f"- td_loss_down: {evidence.get('td_loss_down')}")
++        md_lines.append(f"- w_alignment_up: {evidence.get('w_alignment_up')}")
++        md_lines.append(f"- rho_finite: {evidence.get('rho_finite')}")
++        md_lines.append(f"- evidence_pass: {evidence_pass}")
++    elif evidence_mode == "actor_on":
++        md_lines.append(f"- theta_pi_changed: {evidence.get('theta_pi_changed')}")
++        md_lines.append(f"- tracking_gap_small: {evidence.get('tracking_gap_small')}")
++        md_lines.append(f"- rho_near_one: {evidence.get('rho_near_one')}")
++        md_lines.append(f"- evidence_pass: {evidence_pass}")
++    else:
++        md_lines.append("- evidence_pass: not enforced for this case")
++    md_lines.append("")
++    md_lines.append("## Sigma Condition")
++    md_lines.append(f"- sigma_pi^2 < 2 sigma_mu^2: {sigma_condition}")
++    md_lines.append("")
++    (case_dir / "run_report.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
++    return report
++
++
++def _fmt(value: Any) -> str:
++    try:
++        value = float(value)
++    except Exception:
++        return str(value)
++    if not math.isfinite(value):
++        return str(value)
++    return f"{value:.4g}"
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Run base-check matrix.")
++    parser.add_argument("--base-dir", type=str, required=True, help="Base output dir (outputs/base_check/<TS>).")
++    parser.add_argument("--seed", type=int, default=0, help="Base random seed.")
++    parser.add_argument("--outer-iters", type=int, default=80, help="Outer iterations per case.")
++    parser.add_argument("--horizon", type=int, default=30, help="Trajectory horizon T.")
++    parser.add_argument("--trajectories", type=int, default=4, help="Trajectories per outer iter B.")
++    args = parser.parse_args()
++
++    base_dir = Path(args.base_dir)
++    runs_dir = base_dir / "runs"
++    runs_dir.mkdir(parents=True, exist_ok=True)
++
++    base_cfg = load_train_config(None)
++    base_cfg["outer_iters"] = int(args.outer_iters)
++    base_cfg["horizon"] = int(args.horizon)
++    base_cfg["trajectories"] = int(args.trajectories)
++
++    cases = [
++        {
++            "name": "C0_onpolicy_critic_only",
++            "expect_on_policy": True,
++            "evidence_mode": "critic_only",
++            "overrides": {"alpha_pi": 0.0, "beta": 1.0, "sigma_mu": 0.2, "sigma_pi": 0.2},
++        },
++        {
++            "name": "C1_onpolicy_actor_on",
++            "expect_on_policy": True,
++            "evidence_mode": "actor_on",
++            "overrides": {"alpha_pi": 0.1, "beta": 1.0, "sigma_mu": 0.2, "sigma_pi": 0.2},
++        },
++        {
++            "name": "C2_offpolicy_fixed_behavior",
++            "expect_on_policy": False,
++            "evidence_mode": "none",
++            "overrides": {
++                "beta": 0.0,
++                "theta_mu_offset_scale": 0.5,
++                "sigma_mu": 0.35,
++                "sigma_pi": 0.2,
++            },
++        },
++        {
++            "name": "C3_offpolicy_tracking_beta_small",
++            "expect_on_policy": False,
++            "evidence_mode": "none",
++            "overrides": {
++                "beta": 0.1,
++                "theta_mu_offset_scale": 0.5,
++                "sigma_mu": 0.35,
++                "sigma_pi": 0.2,
++            },
++        },
++        {
++            "name": "C4_offpolicy_tracking_beta_mid",
++            "expect_on_policy": False,
++            "evidence_mode": "none",
++            "overrides": {
++                "beta": 0.5,
++                "theta_mu_offset_scale": 0.5,
++                "sigma_mu": 0.35,
++                "sigma_pi": 0.2,
++            },
++        },
++        {
++            "name": "C5_gamma_zero_sanity",
++            "expect_on_policy": False,
++            "evidence_mode": "none",
++            "overrides": {"gamma": 0.0},
++        },
++        {
++            "name": "C6_batch_scaling_check_B1",
++            "expect_on_policy": False,
++            "evidence_mode": "none",
++            "overrides": {"trajectories": 1, "alpha_pi": 0.0, "beta": 1.0, "sigma_mu": 0.2, "sigma_pi": 0.2},
++        },
++        {
++            "name": "C7_batch_scaling_check_B4",
++            "expect_on_policy": False,
++            "evidence_mode": "none",
++            "overrides": {"trajectories": 4, "alpha_pi": 0.0, "beta": 1.0, "sigma_mu": 0.2, "sigma_pi": 0.2},
++        },
++    ]
++
++    reports = []
++    any_fail = False
++    for idx, case in enumerate(cases):
++        seed = args.seed + idx * 11
++        payload = _run_case(case, base_cfg, runs_dir, seed)
++        report = _build_run_report(case, payload)
++        reports.append(report)
++        if case.get("evidence_mode") in ("critic_only", "actor_on") and not report["summary"]["evidence_pass"]:
++            any_fail = True
++
++    summary_path = base_dir / "summary" / "base_check_summary.json"
++    summary_path.parent.mkdir(parents=True, exist_ok=True)
++    summary_path.write_text(json.dumps({"cases": reports}, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
++    raise SystemExit(1 if any_fail else 0)
++
++
++if __name__ == "__main__":
++    main()

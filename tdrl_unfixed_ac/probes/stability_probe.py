@@ -18,6 +18,7 @@ def run_stability_probe(
     theta_pi: np.ndarray,
     sigma_mu: float,
     sigma_pi: float,
+    squash_action: bool,
     alpha_w: float,
     train_step_scale: float,
     gamma: float,
@@ -31,8 +32,18 @@ def run_stability_probe(
     """Estimate local amplification (spectral radius proxy) for critic updates."""
     rng = np.random.default_rng(seed)
     v_max = float(env_config.get("v_max", 1.0))
-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=v_max)
-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=v_max)
+    mu_policy = LinearGaussianPolicy(
+        theta=np.array(theta_mu, copy=True),
+        sigma=float(sigma_mu),
+        v_max=v_max,
+        squash_action=bool(squash_action),
+    )
+    pi_policy = LinearGaussianPolicy(
+        theta=np.array(theta_pi, copy=True),
+        sigma=float(sigma_pi),
+        v_max=v_max,
+        squash_action=bool(squash_action),
+    )
 
     def _estimate_proxy(batch: Dict[str, np.ndarray], local_rng: np.random.Generator) -> float:
         phi = batch["phi"]

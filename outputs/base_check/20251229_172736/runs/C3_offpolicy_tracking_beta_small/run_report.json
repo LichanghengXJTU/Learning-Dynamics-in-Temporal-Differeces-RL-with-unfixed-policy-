@@ -1,0 +1,53 @@
+{
+  "config": {
+    "seed": 33,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.1,
+    "beta": 0.1,
+    "sigma_mu": 0.35,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C3_offpolicy_tracking_beta_small",
+    "metrics": {
+      "td_loss_est": {
+        "start": 1.8847610742784858e-05,
+        "end": 7.208363219603342e-05,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 3.424358331475933e-05,
+        "end": 0.0005655132101960775,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.002135788901169421,
+        "end": 0.03526993391322504,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.727183140219645,
+        "end": 2.0601958842885626,
+        "trend": "up"
+      },
+      "tracking_gap": {
+        "start": 0.6833122007434145,
+        "end": 0.0001951132770085757,
+        "trend": "down"
+      }
+    },
+    "evidence": {
+      "td_loss_down": false,
+      "w_alignment_up": true,
+      "rho_finite": true
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_172736/runs/C3_offpolicy_tracking_beta_small/metrics.csv"
+}

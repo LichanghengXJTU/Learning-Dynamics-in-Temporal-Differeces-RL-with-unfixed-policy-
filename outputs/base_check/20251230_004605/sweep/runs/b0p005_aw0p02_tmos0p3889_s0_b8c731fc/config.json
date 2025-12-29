@@ -1,0 +1,70 @@
+{
+  "seed": 0,
+  "outer_iters": 200,
+  "trajectories": 16,
+  "horizon": 200,
+  "gamma": 0.99,
+  "alpha_w": 0.02,
+  "alpha_pi": 0.06,
+  "beta": 0.005,
+  "sigma_mu": 0.35,
+  "sigma_pi": 0.3,
+  "K_mc": 4,
+  "theta_radius": 6.0,
+  "theta_init_scale": 0.1,
+  "w_init_scale": 0.1,
+  "theta_mu_offset_scale": 0.388888888889,
+  "squash_action": false,
+  "log_contract_metrics": false,
+  "require_teacher_reward": true,
+  "rho_clip": 10.0,
+  "disable_rho_clip": false,
+  "checkpoint_every": 20,
+  "log_every": 1,
+  "report_every": 50,
+  "report_every_seconds": 0,
+  "output_dir": "outputs/base_check/20251230_004605/sweep/runs/b0p005_aw0p02_tmos0p3889_s0_b8c731fc",
+  "resume": true,
+  "resume_from": null,
+  "env_config_path": "configs/default.yaml",
+  "env": {
+    "feature_dim": 2048,
+    "actor_feature_dim": 512,
+    "p_mix": 0.05,
+    "clip_action": false
+  },
+  "probes": {
+    "enabled": true,
+    "every": 10,
+    "plateau": {
+      "enabled": true,
+      "window": 5,
+      "tol": 0.001,
+      "cooldown": 5,
+      "min_iter": 5
+    },
+    "fixed_point": {
+      "enabled": true,
+      "batch_size": 4096,
+      "max_iters": 2000,
+      "tol": "1e-7",
+      "k_mc": 8
+    },
+    "stability": {
+      "enabled": true,
+      "batch_size": 4096,
+      "power_iters": 20,
+      "k_mc": 8,
+      "n_power_iters": 80
+    },
+    "distribution": {
+      "enabled": true,
+      "num_samples": 4096
+    },
+    "q_kernel": {
+      "enabled": true,
+      "batch_size": 8,
+      "max_horizon": 200
+    }
+  }
+}

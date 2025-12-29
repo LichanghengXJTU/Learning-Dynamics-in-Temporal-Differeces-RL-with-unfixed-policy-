@@ -1,0 +1,6 @@
+ D outputs/sweep/20251229_102355/meta/commandline.txt
+ D outputs/sweep/20251229_102355/meta/grid_effective.yaml
+ D outputs/sweep/20251229_102355/meta/meta.json
+ D outputs/sweep/20251229_102355/meta/run_plan.jsonl
+?? outputs/base_check/
+?? outputs/sweep/20251229_102740/

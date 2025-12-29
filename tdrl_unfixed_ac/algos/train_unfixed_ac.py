@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 import time
 import traceback
 from copy import deepcopy
@@ -15,6 +16,7 @@ import numpy as np
 from tdrl_unfixed_ac.algos.unfixed_ac import (
     LinearGaussianPolicy,
     apply_rho_clip,
+    batch_step_scale,
     critic_value,
     project_to_ball,
 )
@@ -45,6 +47,10 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
     "theta_radius": 4.0,
     "theta_init_scale": 0.1,
     "w_init_scale": 0.1,
+    "theta_mu_offset_scale": 0.0,
+    "squash_action": False,
+    "log_contract_metrics": False,
+    "require_teacher_reward": True,
     "rho_clip": None,
     "disable_rho_clip": False,
     "checkpoint_every": 5,
@@ -113,8 +119,8 @@ def load_train_config(path: Optional[str] = None) -> Dict[str, Any]:
     return config
 
 
-def _clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
-    if v_max <= 0.0:
+def _clip_action(action: np.ndarray, v_max: float, clip_action: bool) -> np.ndarray:
+    if not clip_action or v_max <= 0.0:
         return action
     return np.clip(action, -v_max, v_max)
 
@@ -134,6 +140,23 @@ def _mc_bar_phi(
         phi = env.compute_features(action)["phi"]
         phis.append(phi)
     return np.mean(np.stack(phis, axis=0), axis=0)
+
+
+def _gaussian_kl_isotropic(
+    mean_p: np.ndarray,
+    sigma_p: float,
+    mean_q: np.ndarray,
+    sigma_q: float,
+) -> np.ndarray:
+    mean_p = np.asarray(mean_p, dtype=float)
+    mean_q = np.asarray(mean_q, dtype=float)
+    var_p = float(sigma_p) ** 2
+    var_q = float(sigma_q) ** 2
+    diff = mean_q - mean_p
+    diff_norm_sq = np.sum(diff * diff, axis=-1)
+    dim = mean_p.shape[-1]
+    log_ratio = np.log(var_q / var_p)
+    return 0.5 * (dim * (var_p / var_q) + diff_norm_sq / var_q - dim + dim * log_ratio)
 
 
 def _json_ready(obj: Any) -> Any:
@@ -175,6 +198,12 @@ def _last_logged_iter(logs: list[Dict[str, Any]]) -> Optional[int]:
     return None
 
 
+def _ensure_logs_csv(csv_path: Path, output_dir: Path) -> None:
+    logs_path = output_dir / "logs.csv"
+    if csv_path.exists() and not logs_path.exists():
+        shutil.copyfile(csv_path, logs_path)
+
+
 def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
     cfg = deepcopy(config)
     seed = int(cfg.get("seed", 0))
@@ -191,6 +220,10 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
     theta_radius = float(cfg.get("theta_radius", 0.0))
     theta_init_scale = float(cfg.get("theta_init_scale", 0.1))
     w_init_scale = float(cfg.get("w_init_scale", 0.1))
+    theta_mu_offset_scale = float(cfg.get("theta_mu_offset_scale", 0.0))
+    squash_action = bool(cfg.get("squash_action", False))
+    log_contract_metrics = bool(cfg.get("log_contract_metrics", False))
+    require_teacher_reward = bool(cfg.get("require_teacher_reward", True))
     rho_clip = cfg.get("rho_clip", None)
     disable_rho_clip = bool(cfg.get("disable_rho_clip", False))
     checkpoint_every = int(cfg.get("checkpoint_every", 0))
@@ -200,8 +233,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
     output_dir = Path(cfg.get("output_dir", "outputs/unfixed_ac"))
     resume = bool(cfg.get("resume", False))
     resume_from = cfg.get("resume_from", None)
-    total_steps = max(trajectories * horizon, 1)
-    train_step_scale = alpha_w / total_steps
+    step_scale = batch_step_scale(trajectories, horizon)
+    train_step_scale = alpha_w * step_scale
 
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = output_dir / "checkpoints"
@@ -217,6 +250,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
         if env_cfg.get("seed") is None:
             env_cfg["seed"] = seed
         env = TorusGobletGhostEnv(config=env_cfg)
+        if require_teacher_reward and not env.use_teacher_reward:
+            raise ValueError("Teacher reward required: set env.use_teacher_reward=True.")
 
         seeder = Seeder(seed)
         init_rng = seeder.spawn()
@@ -228,6 +263,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
 
         theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
         theta_mu = np.array(theta_pi, copy=True)
+        if theta_mu_offset_scale > 0.0:
+            theta_mu += init_rng.normal(loc=0.0, scale=theta_mu_offset_scale, size=theta_mu.shape)
         w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
 
         logs = _load_existing_logs(csv_path)
@@ -264,6 +301,7 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
             k_mc=k_mc,
             sigma_mu=sigma_mu,
             sigma_pi=sigma_pi,
+            squash_action=squash_action,
             rho_clip=rho_clip,
             disable_rho_clip=disable_rho_clip,
         )
@@ -286,8 +324,18 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
         last_report_time = time.time()
 
         for n in range(start_iter, outer_iters):
-            mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu, v_max=env.v_max)
-            pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi, v_max=env.v_max)
+            mu_policy = LinearGaussianPolicy(
+                theta=theta_mu,
+                sigma=sigma_mu,
+                v_max=env.v_max,
+                squash_action=squash_action,
+            )
+            pi_policy = LinearGaussianPolicy(
+                theta=theta_pi,
+                sigma=sigma_pi,
+                v_max=env.v_max,
+                squash_action=squash_action,
+            )
 
             grad_w = np.zeros_like(w)
             grad_theta = np.zeros_like(theta_pi)
@@ -297,6 +345,10 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
             rho_exec_vals = []
             a_diff_vals = []
             clip_count = 0
+            action_sum = np.zeros(action_dim, dtype=float)
+            action_sq_sum = np.zeros(action_dim, dtype=float)
+            action_count = 0
+            psi_samples = [] if log_contract_metrics else None
 
             delta_cache = None
             if probe_manager.enabled and probe_manager.q_kernel_enabled:
@@ -312,11 +364,16 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
                 for t_idx in range(horizon):
                     # ---- sample action from behavior policy mu ----
                     a_exec = mu_policy.sample_action(psi, rollout_rng)
-                    a_clip = _clip_action(a_exec, env.v_max)
+                    a_clip = _clip_action(a_exec, env.v_max, env.clip_action)
                     a_diff = float(np.linalg.norm(a_exec - a_clip))
                     a_diff_vals.append(a_diff)
                     if a_diff > 1e-12:
                         clip_count += 1
+                    if log_contract_metrics:
+                        action_sum += a_exec
+                        action_sq_sum += a_exec * a_exec
+                        action_count += 1
+                        psi_samples.append(np.array(psi, copy=True))
 
                     # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
                     u_exec = mu_policy.pre_squash(a_exec)
@@ -365,9 +422,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
             w_prev = np.array(w, copy=True)
             theta_pi_prev = np.array(theta_pi, copy=True)
 
-            scale = 1.0 / total_steps
-            w = w + alpha_w * scale * grad_w
-            theta_pi = theta_pi + alpha_pi * scale * grad_theta
+            w = w + alpha_w * step_scale * grad_w
+            theta_pi = theta_pi + alpha_pi * step_scale * grad_theta
             theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
 
             theta_pi = project_to_ball(theta_pi, theta_radius)
@@ -443,6 +499,43 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
             critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
             tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
             w_norm = float(np.linalg.norm(w))
+            extra_metrics = {}
+            if log_contract_metrics:
+                w_norm_contract = float(np.linalg.norm(w) / np.sqrt(feature_dim))
+                theta_pi_norm = float(np.linalg.norm(theta_pi) / np.sqrt(actor_dim))
+                theta_mu_norm = float(np.linalg.norm(theta_mu) / np.sqrt(actor_dim))
+                tracking_gap_contract = float(np.linalg.norm(theta_pi - theta_mu) / np.sqrt(actor_dim))
+                w_dot_wr_over_n = float(np.dot(w, teacher_w) / feature_dim)
+                w_norm_denom = float(np.linalg.norm(teacher_w) * np.linalg.norm(w))
+                cos_w_wr = float(np.dot(w, teacher_w) / w_norm_denom) if w_norm_denom > 0 else float("nan")
+                if action_count > 0:
+                    mean_vec = action_sum / action_count
+                    var_vec = action_sq_sum / action_count - mean_vec * mean_vec
+                    action_mean = float(np.mean(mean_vec))
+                    action_var = float(np.mean(var_vec))
+                else:
+                    action_mean = float("nan")
+                    action_var = float("nan")
+                dist_action_kl = float("nan")
+                if psi_samples:
+                    psi_batch = np.stack(psi_samples, axis=0)
+                    mean_pi = (psi_batch @ theta_pi) / np.sqrt(actor_dim)
+                    mean_mu = (psi_batch @ theta_mu) / np.sqrt(actor_dim)
+                    kl_vals = _gaussian_kl_isotropic(mean_pi, sigma_pi, mean_mu, sigma_mu)
+                    if kl_vals.size:
+                        dist_action_kl = float(np.mean(kl_vals))
+                extra_metrics = {
+                    "w_norm_contract": w_norm_contract,
+                    "theta_pi_norm": theta_pi_norm,
+                    "theta_mu_norm": theta_mu_norm,
+                    "tracking_gap_contract": tracking_gap_contract,
+                    "w_dot_wr_over_n": w_dot_wr_over_n,
+                    "cos_w_wr": cos_w_wr,
+                    "action_mean": action_mean,
+                    "action_var": action_var,
+                    "dist_action_kl": dist_action_kl,
+                    "td_loss_est": float(td_loss / 2.0) if np.isfinite(td_loss) else float("nan"),
+                }
 
             log_row = {
                 "iter": n,
@@ -476,6 +569,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
                 "delta_w_norm": delta_w_norm,
                 **probe_defaults,
             }
+            if extra_metrics:
+                log_row.update(extra_metrics)
             probe_updates = probe_manager.maybe_run(
                 iteration=n,
                 td_loss=td_loss,
@@ -556,3 +651,4 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
         finally:
             if csv_handle is not None:
                 csv_handle.close()
+            _ensure_logs_csv(csv_path, output_dir)

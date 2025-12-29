@@ -1,0 +1,61 @@
+{
+  "config": {
+    "seed": 66,
+    "N": null,
+    "N_act": null,
+    "B": 1,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.0,
+    "beta": 1.0,
+    "sigma_mu": 0.2,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C6_batch_scaling_check_B1",
+    "metrics": {
+      "td_loss_est": {
+        "start": 0.00014356027663617026,
+        "end": 0.00017765677076615654,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 0.0009287080235111168,
+        "end": 0.0011599765887698415,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.05598796547179811,
+        "end": 0.07013047007992292,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.0,
+        "end": 1.0,
+        "trend": "flat"
+      },
+      "tracking_gap": {
+        "start": 0.0,
+        "end": 0.0,
+        "trend": "flat"
+      },
+      "theta_pi_norm": {
+        "start": 0.15117697294144397,
+        "end": 0.15117697294144397,
+        "trend": "flat"
+      },
+      "theta_mu_norm": {
+        "start": 0.15117697294144397,
+        "end": 0.15117697294144397,
+        "trend": "flat"
+      }
+    },
+    "evidence": {
+      "note": "evidence not enforced for this case"
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_180135/runs/C6_batch_scaling_check_B1/metrics.csv"
+}

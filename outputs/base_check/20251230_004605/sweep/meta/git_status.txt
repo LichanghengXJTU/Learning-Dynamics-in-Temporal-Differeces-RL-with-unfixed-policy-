@@ -1,0 +1,23 @@
+M configs/train_instability.yaml
+ M configs/train_plateau.yaml
+ M docs/sweep.md
+ D outputs/sweep/20251229_102355/meta/commandline.txt
+ D outputs/sweep/20251229_102355/meta/grid_effective.yaml
+ D outputs/sweep/20251229_102355/meta/meta.json
+ D outputs/sweep/20251229_102355/meta/run_plan.jsonl
+ M scripts/analyze_step_c.py
+ M scripts/run_train.py
+ M scripts/sweep_stepC.py
+ M tdrl_unfixed_ac/algos/train_unfixed_ac.py
+ M tdrl_unfixed_ac/algos/unfixed_ac.py
+ M tdrl_unfixed_ac/configs/default.yaml
+ M tdrl_unfixed_ac/envs/torus_gg.py
+ M tdrl_unfixed_ac/probes/common.py
+ M tdrl_unfixed_ac/probes/distribution_probe.py
+ M tdrl_unfixed_ac/probes/fixed_point_probe.py
+ M tdrl_unfixed_ac/probes/manager.py
+ M tdrl_unfixed_ac/probes/stability_probe.py
+ M tdrl_unfixed_ac/reporting/run_report.py
+?? outputs/base_check/
+?? outputs/sweep/20251229_102740/
+?? scripts/base_check/

@@ -1,0 +1,1282 @@
+diff --git a/configs/train_instability.yaml b/configs/train_instability.yaml
+index dab1acf..b091e34 100644
+--- a/configs/train_instability.yaml
++++ b/configs/train_instability.yaml
+@@ -13,12 +13,15 @@
+   "theta_radius": 8.0,
+   "theta_init_scale": 0.2,
+   "w_init_scale": 0.2,
++  "theta_mu_offset_scale": 0.0,
++  "squash_action": false,
++  "require_teacher_reward": true,
+   "rho_clip": 10.0,
+   "disable_rho_clip": true,
+   "checkpoint_every": 20,
+   "log_every": 1,
+   "env_config_path": "configs/default.yaml",
+-  "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.01 },
++  "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.01, "clip_action": false },
+   "probes": {
+     "enabled": true,
+     "every": 10,
+diff --git a/configs/train_plateau.yaml b/configs/train_plateau.yaml
+index 90068e8..800cdcf 100644
+--- a/configs/train_plateau.yaml
++++ b/configs/train_plateau.yaml
+@@ -13,12 +13,15 @@
+   "theta_radius": 6.0,
+   "theta_init_scale": 0.1,
+   "w_init_scale": 0.1,
++  "theta_mu_offset_scale": 0.0,
++  "squash_action": false,
++  "require_teacher_reward": true,
+   "rho_clip": 10.0,
+   "disable_rho_clip": false,
+   "checkpoint_every": 20,
+   "log_every": 1,
+   "env_config_path": "configs/default.yaml",
+-  "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.05 },
++  "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.05, "clip_action": false },
+   "probes": {
+     "enabled": true,
+     "every": 10,
+diff --git a/docs/sweep.md b/docs/sweep.md
+index 61acbf9..1bd33fb 100644
+--- a/docs/sweep.md
++++ b/docs/sweep.md
+@@ -1,13 +1,13 @@
+ # Step C sweep
+ 
+ ## Quick start
+-Run a 7x7x7 sweep (default axes) and summarize:
++Run a 10x10x10 sweep (alpha_w logspace, beta linspace, theta_mu_offset_scale linspace) and summarize:
+ 
+ ```bash
+-python scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 1000 --grid 7 --jobs 1
++python scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 200 --grid 10 --jobs 1
+ ```
+ 
+-Outputs are written under `outputs/sweep/<timestamp>/`.
++Outputs are written under `outputs/base_check/<timestamp>/sweep/`.
+ 
+ ## Resume
+ Reuse a prior sweep root:
+@@ -19,7 +19,7 @@ python scripts/sweep_stepC.py --timestamp <YYYYmmdd_HHMMSS> --resume --jobs 1
+ Or point to the sweep root directly:
+ 
+ ```bash
+-python scripts/sweep_stepC.py --run-root outputs/sweep/<timestamp> --resume --jobs 1
++python scripts/sweep_stepC.py --run-root outputs/base_check/<timestamp>/sweep --resume --jobs 1
+ ```
+ 
+ ## Pilot (2x2x2)
+@@ -32,13 +32,14 @@ python scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-i
+ ## Summary outputs
+ After the sweep finishes:
+ 
+-- `outputs/sweep/<timestamp>/summary/summary.md` includes bucketed top-k tables and thresholds.
+-- `outputs/sweep/<timestamp>/summary/summary.csv` has the full grid.
+-- `outputs/sweep/<timestamp>/summary/buckets/` contains per-bucket CSVs.
++- `outputs/base_check/<timestamp>/sweep/summary/summary.md` includes bucketed top-k tables and thresholds.
++- `outputs/base_check/<timestamp>/sweep/summary/summary.csv` has the full grid.
++- `outputs/base_check/<timestamp>/sweep/summary/summary.json` has the full grid in JSON.
++- `outputs/base_check/<timestamp>/sweep/summary/buckets/` contains per-bucket CSVs.
+ 
+ To bias selection toward true off-policy points, pick from `offpolicy_stable_top.csv`. For instability boundary points, check the "Stability boundary" table in `summary.md`, then rerun those configurations with longer `--outer-iters`.
+ 
+ ## Common tweaks
+ - Adjust thresholds: `--eps-slope`, `--eps-drift`, `--offpolicy-threshold`.
+-- Change off-policy axis: `--offpolicy-axis sigma_mu|sigma_pi|p_mix`.
++- Override grid values: `--beta-values`, `--alpha-w-values`, `--theta-mu-offset-values`.
+ - Print the plan only: `--dry-run`.
+diff --git a/outputs/sweep/20251229_102355/meta/commandline.txt b/outputs/sweep/20251229_102355/meta/commandline.txt
+deleted file mode 100644
+index 79775fb..0000000
+--- a/outputs/sweep/20251229_102355/meta/commandline.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 200 --grid 2 --jobs 1
+\ No newline at end of file
+diff --git a/outputs/sweep/20251229_102355/meta/grid_effective.yaml b/outputs/sweep/20251229_102355/meta/grid_effective.yaml
+deleted file mode 100644
+index 47fc7c3..0000000
+--- a/outputs/sweep/20251229_102355/meta/grid_effective.yaml
++++ /dev/null
+@@ -1,13 +0,0 @@
+-beta_values:
+-- 0.005
+-- 0.4
+-alpha_w_values:
+-- 0.02
+-- 0.24
+-offpolicy_axis: sigma_mu
+-offpolicy_values:
+-- 0.175
+-- 0.7
+-seed_values:
+-- 0
+-base_config: configs/train_plateau.yaml
+diff --git a/outputs/sweep/20251229_102355/meta/meta.json b/outputs/sweep/20251229_102355/meta/meta.json
+deleted file mode 100644
+index d9210f7..0000000
+--- a/outputs/sweep/20251229_102355/meta/meta.json
++++ /dev/null
+@@ -1,12 +0,0 @@
+-{
+-  "timestamp": "2025-12-29T10:23:55",
+-  "command": "scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 200 --grid 2 --jobs 1",
+-  "git": {
+-    "commit": "a84b364b797739f6a6669e4a8308245a452d798f",
+-    "dirty": true
+-  },
+-  "python": {
+-    "executable": "/Library/Developer/CommandLineTools/usr/bin/python3",
+-    "version": "3.9.6 (default, Apr 30 2025, 02:07:17)  [Clang 17.0.0 (clang-1700.0.13.5)]"
+-  }
+-}
+\ No newline at end of file
+diff --git a/outputs/sweep/20251229_102355/meta/run_plan.jsonl b/outputs/sweep/20251229_102355/meta/run_plan.jsonl
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/scripts/analyze_step_c.py b/scripts/analyze_step_c.py
+index fe1022e..4538c97 100644
+--- a/scripts/analyze_step_c.py
++++ b/scripts/analyze_step_c.py
+@@ -707,8 +707,9 @@ def _scale_note(summary: Dict[str, object]) -> Tuple[str, float]:
+     alpha_w = float(summary.get("alpha_w", 0.0) or 0.0)
+     trajectories = int(summary.get("trajectories", 0) or 0)
+     horizon = int(summary.get("horizon", 0) or 0)
+-    total_steps = max(trajectories * horizon, 1)
+-    train_step_scale = alpha_w / total_steps if alpha_w > 0 else float("nan")
++    b_val = max(trajectories, 1)
++    t_val = max(horizon, 1)
++    train_step_scale = alpha_w / (math.sqrt(b_val) * t_val) if alpha_w > 0 else float("nan")
+     stability_scale = float("nan")
+     probe_path = run_dir / "probes" / "stability_probe.csv"
+     if probe_path.exists():
+@@ -720,7 +721,7 @@ def _scale_note(summary: Dict[str, object]) -> Tuple[str, float]:
+         "alpha_w = {alpha_w}\n"
+         "trajectories = {trajectories}\n"
+         "horizon = {horizon}\n"
+-        "train_step_scale = alpha_w / (trajectories * horizon)\n"
++        "train_step_scale = alpha_w / (sqrt(trajectories) * horizon)\n"
+         "stability_probe_step_scale = {stability_scale}\n"
+         "ratio = stability_probe_step_scale / train_step_scale\n"
+     ).format(
+diff --git a/scripts/run_train.py b/scripts/run_train.py
+index 64b42a7..f37cf5a 100644
+--- a/scripts/run_train.py
++++ b/scripts/run_train.py
+@@ -27,6 +27,12 @@ def parse_args() -> argparse.Namespace:
+     parser.add_argument("--sigma-pi", type=float, default=None, help="Override target policy sigma.")
+     parser.add_argument("--gamma", type=float, default=None, help="Override discount factor.")
+     parser.add_argument("--theta-radius", type=float, default=None, help="Override policy parameter radius.")
++    parser.add_argument(
++        "--theta-mu-offset-scale",
++        type=float,
++        default=None,
++        help="Override theta_mu_offset_scale.",
++    )
+     parser.add_argument("--outer-iters", type=int, default=None, help="Override outer training iterations.")
+     parser.add_argument("--rho-clip", type=float, default=None, help="Override rho clip upper bound.")
+     parser.add_argument("--disable-rho-clip", action="store_true", help="Disable rho clipping.")
+@@ -65,6 +71,8 @@ def main() -> None:
+         cfg["gamma"] = args.gamma
+     if args.theta_radius is not None:
+         cfg["theta_radius"] = args.theta_radius
++    if args.theta_mu_offset_scale is not None:
++        cfg["theta_mu_offset_scale"] = args.theta_mu_offset_scale
+     if args.outer_iters is not None:
+         cfg["outer_iters"] = args.outer_iters
+     if args.rho_clip is not None:
+diff --git a/scripts/sweep_stepC.py b/scripts/sweep_stepC.py
+index 2749a46..e97cd86 100644
+--- a/scripts/sweep_stepC.py
++++ b/scripts/sweep_stepC.py
+@@ -8,6 +8,7 @@ import csv
+ import hashlib
+ import json
+ import math
++import platform
+ import shlex
+ import subprocess
+ import sys
+@@ -28,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
+ 
+ DEFAULT_BETA_FACTORS = [0.1, 0.2, 0.4, 1.0, 2.0, 4.0, 8.0]
+ DEFAULT_ALPHA_W_FACTORS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
+-DEFAULT_SIGMA_FACTORS = [0.5, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0]
+-DEFAULT_P_MIX_FACTORS = [0.1, 0.2, 0.4, 1.0, 2.0, 4.0, 8.0]
++DEFAULT_THETA_MU_OFFSET_MIN = 0.0
++DEFAULT_THETA_MU_OFFSET_MAX = 0.5
+ 
+ 
+ @dataclass
+@@ -37,34 +38,31 @@ class RunSpec:
+     run_id: str
+     beta: float
+     alpha_w: float
+-    offpolicy_axis: str
+-    offpolicy_value: float
++    theta_mu_offset_scale: float
+     seed: Optional[int]
+     output_dir: Path
+ 
+ 
+ def parse_args() -> argparse.Namespace:
+-    parser = argparse.ArgumentParser(description="Run a Step C sweep (up to 7x7x7).")
++    parser = argparse.ArgumentParser(description="Run a Step C sweep (contract 10x10x10).")
+     parser.add_argument("--base-config", type=str, default="configs/train_plateau.yaml")
+-    parser.add_argument("--out-root", type=str, default="outputs/sweep")
++    parser.add_argument("--out-root", type=str, default="outputs/base_check")
+     parser.add_argument("--timestamp", type=str, default=None, help="Reuse an existing timestamp (YYYYmmdd_HHMMSS).")
+     parser.add_argument("--run-root", type=str, default=None, help="Explicit sweep root (overrides out-root/timestamp).")
+-    parser.add_argument("--outer-iters", type=int, default=1000)
++    parser.add_argument("--outer-iters", type=int, default=200)
+     parser.add_argument("--report-every", type=int, default=50)
+     parser.add_argument("--report-every-seconds", type=float, default=0.0)
+-    parser.add_argument("--grid", type=int, default=7, help="Points per axis (<=7).")
++    parser.add_argument("--grid", type=int, default=10, help="Points per axis.")
+     parser.add_argument("--jobs", type=int, default=1)
+     parser.add_argument("--seeds", type=str, default=None, help="Comma-separated list of seeds.")
+     parser.add_argument("--beta-values", type=str, default=None, help="Comma-separated beta values.")
+     parser.add_argument("--alpha-w-values", type=str, default=None, help="Comma-separated alpha_w values.")
+     parser.add_argument(
+-        "--offpolicy-axis",
++        "--theta-mu-offset-values",
+         type=str,
+-        default="sigma_mu",
+-        choices=["sigma_mu", "sigma_pi", "p_mix"],
+-        help="Axis controlling off-policy mismatch.",
++        default=None,
++        help="Comma-separated theta_mu_offset_scale values.",
+     )
+-    parser.add_argument("--offpolicy-values", type=str, default=None, help="Comma-separated values for offpolicy axis.")
+     parser.add_argument("--eps-slope", type=float, default=1e-6, help="Plateau slope threshold.")
+     parser.add_argument("--eps-drift", type=float, default=1e-4, help="Plateau drift threshold.")
+     parser.add_argument("--offpolicy-threshold", type=float, default=1e-3, help="Off-policy score threshold.")
+@@ -83,7 +81,6 @@ def parse_args() -> argparse.Namespace:
+         help="Resume runs when output dir exists (default).",
+     )
+     parser.add_argument("--no-resume", dest="resume", action="store_false", help="Disable resume.")
+-    parser.add_argument("--pip-freeze", action="store_true", help="Record pip freeze in meta.")
+     return parser.parse_args()
+ 
+ 
+@@ -161,6 +158,30 @@ def pick_grid(values: List[float], grid: int) -> List[float]:
+     return chosen
+ 
+ 
++def linspace_values(min_val: float, max_val: float, num: int) -> List[float]:
++    if num <= 1:
++        return [round(float(min_val), 12)]
++    step = (max_val - min_val) / (num - 1)
++    values = [round(float(min_val + step * idx), 12) for idx in range(num)]
++    if len(set(values)) != len(values):
++        raise SystemExit("linspace produced duplicate values; adjust min/max or provide explicit values.")
++    return values
++
++
++def logspace_values(min_val: float, max_val: float, num: int) -> List[float]:
++    if min_val <= 0 or max_val <= 0:
++        raise SystemExit("logspace requires positive min/max values.")
++    if num <= 1:
++        return [round(float(min_val), 12)]
++    log_min = math.log10(min_val)
++    log_max = math.log10(max_val)
++    step = (log_max - log_min) / (num - 1)
++    values = [round(float(10 ** (log_min + step * idx)), 12) for idx in range(num)]
++    if len(set(values)) != len(values):
++        raise SystemExit("logspace produced duplicate values; adjust min/max or provide explicit values.")
++    return values
++
++
+ def format_tag(value: Optional[float]) -> str:
+     if value is None:
+         return "none"
+@@ -176,7 +197,7 @@ def run_id_for(params: Dict[str, Any]) -> str:
+     digest = hashlib.md5(payload.encode("utf-8")).hexdigest()[:8]
+     return (
+         f"b{format_tag(params.get('beta'))}_aw{format_tag(params.get('alpha_w'))}_"
+-        f"{params.get('offpolicy_axis')}{format_tag(params.get('offpolicy_value'))}_"
++        f"tmos{format_tag(params.get('theta_mu_offset_scale'))}_"
+         f"s{params.get('seed', 'na')}_{digest}"
+     )
+ 
+@@ -241,6 +262,37 @@ def pip_freeze() -> str:
+     return result.stdout.strip()
+ 
+ 
++def git_text(args: Sequence[str]) -> str:
++    try:
++        result = subprocess.run(
++            list(args),
++            cwd=str(ROOT),
++            capture_output=True,
++            text=True,
++            check=False,
++        )
++    except Exception:
++        return ""
++    if result.returncode != 0:
++        return ""
++    return result.stdout.strip()
++
++
++def write_meta_artifacts(meta_dir: Path) -> None:
++    ensure_dir(meta_dir)
++    git_head = git_text(["git", "rev-parse", "HEAD"])
++    (meta_dir / "git_head.txt").write_text((git_head or "") + "\n")
++    git_status = git_text(["git", "status", "--porcelain"])
++    (meta_dir / "git_status.txt").write_text((git_status or "") + "\n")
++    git_diff = git_text(["git", "diff"])
++    (meta_dir / "git_diff.patch").write_text((git_diff or "") + "\n")
++    python_version = sys.version.replace("\n", " ").strip()
++    (meta_dir / "python_version.txt").write_text(python_version + "\n")
++    uname_text = " ".join(platform.uname())
++    (meta_dir / "uname.txt").write_text(uname_text + "\n")
++    (meta_dir / "requirements_freeze.txt").write_text(pip_freeze() + "\n")
++
++
+ def append_jsonl(path: Path, payload: Dict[str, Any], lock: threading.Lock) -> None:
+     line = json.dumps(payload, ensure_ascii=True)
+     with lock:
+@@ -278,6 +330,8 @@ def build_command(
+         str(spec.beta),
+         "--alpha-w",
+         str(spec.alpha_w),
++        "--theta-mu-offset-scale",
++        str(spec.theta_mu_offset_scale),
+         "--outer-iters",
+         str(args.outer_iters),
+     ]
+@@ -287,12 +341,6 @@ def build_command(
+         cmd.extend(["--report-every-seconds", str(args.report_every_seconds)])
+     if spec.seed is not None:
+         cmd.extend(["--seed", str(spec.seed)])
+-    if spec.offpolicy_axis == "sigma_mu":
+-        cmd.extend(["--sigma-mu", str(spec.offpolicy_value)])
+-    elif spec.offpolicy_axis == "sigma_pi":
+-        cmd.extend(["--sigma-pi", str(spec.offpolicy_value)])
+-    elif spec.offpolicy_axis == "p_mix":
+-        cmd.extend(["--p-mix", str(spec.offpolicy_value)])
+     if resume:
+         cmd.append("--resume")
+     return cmd
+@@ -319,8 +367,7 @@ def run_one(
+         "base_config": str(base_config),
+         "beta": spec.beta,
+         "alpha_w": spec.alpha_w,
+-        "offpolicy_axis": spec.offpolicy_axis,
+-        "offpolicy_value": spec.offpolicy_value,
++        "theta_mu_offset_scale": spec.theta_mu_offset_scale,
+         "seed": spec.seed,
+     }
+     write_json(run_dir / "params.json", params)
+@@ -620,8 +667,7 @@ def compute_metrics(
+         "run_dir": str(run_dir),
+         "beta": params.get("beta"),
+         "alpha_w": params.get("alpha_w"),
+-        "offpolicy_axis": params.get("offpolicy_axis"),
+-        "offpolicy_value": params.get("offpolicy_value"),
++        "theta_mu_offset_scale": params.get("theta_mu_offset_scale"),
+         "seed": params.get("seed"),
+         "health_status": health_status,
+         "stable_flag": stable_flag,
+@@ -657,8 +703,7 @@ def load_params(run_dir: Path) -> Dict[str, Any]:
+         "run_id": run_dir.name,
+         "beta": config.get("beta"),
+         "alpha_w": config.get("alpha_w"),
+-        "offpolicy_axis": "sigma_mu",
+-        "offpolicy_value": config.get("sigma_mu"),
++        "theta_mu_offset_scale": config.get("theta_mu_offset_scale"),
+         "seed": config.get("seed"),
+         "p_mix": env_cfg.get("p_mix"),
+     }
+@@ -688,8 +733,7 @@ def summarize_sweep(
+         "run_id",
+         "beta",
+         "alpha_w",
+-        "offpolicy_axis",
+-        "offpolicy_value",
++        "theta_mu_offset_scale",
+         "seed",
+         "health_status",
+         "stable_flag",
+@@ -747,10 +791,35 @@ def summarize_sweep(
+     write_bucket(buckets_dir / "instability_top.csv", instability_sorted[:top_k])
+     write_bucket(buckets_dir / "plateau_drift_top.csv", plateau_sorted[:top_k])
+ 
++    write_json(
++        summary_dir / "summary.json",
++        {
++            "run_root": str(run_root),
++            "generated_at": datetime.now().isoformat(timespec="seconds"),
++            "grid": grid_info,
++            "thresholds": {
++                "offpolicy_threshold": args.offpolicy_threshold,
++                "eps_slope": args.eps_slope,
++                "eps_drift": args.eps_drift,
++                "window": args.window,
++                "stability_eps": args.stability_eps,
++                "td_loss_blowup": args.td_loss_blowup,
++                "w_norm_blowup": args.w_norm_blowup,
++            },
++            "counts": {
++                "total_runs": len(rows),
++                "offpolicy_stable": len(offpolicy_stable),
++                "instability": len(instability),
++                "plateau_drift": len(plateau),
++            },
++            "rows": rows,
++        },
++    )
++
+     boundary_rows = []
+     group_map: Dict[Tuple[Any, Any, Any], List[Dict[str, Any]]] = {}
+     for row in rows:
+-        key = (row.get("seed"), row.get("beta"), row.get("offpolicy_value"))
++        key = (row.get("seed"), row.get("beta"), row.get("theta_mu_offset_scale"))
+         group_map.setdefault(key, []).append(row)
+     for items in group_map.values():
+         items_sorted = sorted(items, key=lambda r: r.get("alpha_w") or 0.0)
+@@ -763,7 +832,7 @@ def summarize_sweep(
+                         "run_id": prev.get("run_id"),
+                         "beta": prev.get("beta"),
+                         "alpha_w": prev.get("alpha_w"),
+-                        "offpolicy_value": prev.get("offpolicy_value"),
++                        "theta_mu_offset_scale": prev.get("theta_mu_offset_scale"),
+                         "offpolicy_score": prev.get("offpolicy_score"),
+                         "td_loss_last": prev.get("td_loss_last"),
+                         "w_norm_last": prev.get("w_norm_last"),
+@@ -785,8 +854,7 @@ def summarize_sweep(
+     lines.append("## Grid (effective)")
+     lines.append(f"- beta_values: {grid_info.get('beta_values')}")
+     lines.append(f"- alpha_w_values: {grid_info.get('alpha_w_values')}")
+-    lines.append(f"- offpolicy_axis: {grid_info.get('offpolicy_axis')}")
+-    lines.append(f"- offpolicy_values: {grid_info.get('offpolicy_values')}")
++    lines.append(f"- theta_mu_offset_scale_values: {grid_info.get('theta_mu_offset_scale_values')}")
+     lines.append("")
+     lines.append("## Thresholds")
+     lines.append(f"- offpolicy_threshold: {args.offpolicy_threshold}")
+@@ -815,7 +883,7 @@ def summarize_sweep(
+             "run_id",
+             "beta",
+             "alpha_w",
+-            "offpolicy_value",
++            "theta_mu_offset_scale",
+             "offpolicy_score",
+             "td_loss_last",
+             "w_norm_last",
+@@ -832,7 +900,7 @@ def summarize_sweep(
+                         str(row.get("run_id")),
+                         str(row.get("beta")),
+                         str(row.get("alpha_w")),
+-                        str(row.get("offpolicy_value")),
++                        str(row.get("theta_mu_offset_scale")),
+                         str(row.get("offpolicy_score")),
+                         str(row.get("td_loss_last")),
+                         str(row.get("w_norm_last")),
+@@ -861,7 +929,7 @@ def summarize_sweep(
+             "run_id",
+             "beta",
+             "alpha_w",
+-            "offpolicy_value",
++            "theta_mu_offset_scale",
+             "offpolicy_score",
+             "td_loss_last",
+             "w_norm_last",
+@@ -878,7 +946,7 @@ def summarize_sweep(
+                         str(row.get("run_id")),
+                         str(row.get("beta")),
+                         str(row.get("alpha_w")),
+-                        str(row.get("offpolicy_value")),
++                        str(row.get("theta_mu_offset_scale")),
+                         str(row.get("offpolicy_score")),
+                         str(row.get("td_loss_last")),
+                         str(row.get("w_norm_last")),
+@@ -892,55 +960,85 @@ def summarize_sweep(
+ 
+     lines.append("## Outputs")
+     lines.append(f"- summary_csv: {summary_dir / 'summary.csv'}")
++    lines.append(f"- summary_json: {summary_dir / 'summary.json'}")
++    lines.append(f"- summary_rows: {summary_dir / 'summary_rows.jsonl'}")
++    lines.append(f"- artifacts_index: {summary_dir / 'artifacts_index.md'}")
+     lines.append(f"- buckets_dir: {buckets_dir}")
+ 
+     summary_md.write_text("\n".join(lines))
++    write_artifacts_index(run_root, summary_dir, buckets_dir)
+     return rows
+ 
+ 
++def write_artifacts_index(run_root: Path, summary_dir: Path, buckets_dir: Path) -> None:
++    items: List[str] = []
++
++    def add(path: Path) -> None:
++        if path.exists():
++            items.append(str(path))
++
++    meta_dir = run_root / "meta"
++    add(meta_dir / "git_head.txt")
++    add(meta_dir / "git_status.txt")
++    add(meta_dir / "git_diff.patch")
++    add(meta_dir / "python_version.txt")
++    add(meta_dir / "requirements_freeze.txt")
++    add(meta_dir / "uname.txt")
++    add(meta_dir / "commandline.txt")
++    add(meta_dir / "meta.json")
++    add(meta_dir / "grid_effective.yaml")
++    add(meta_dir / "run_plan.jsonl")
++    add(meta_dir / "run_status.json")
++    add(meta_dir / "commands_executed.jsonl")
++
++    add(summary_dir / "summary.csv")
++    add(summary_dir / "summary.json")
++    add(summary_dir / "summary.md")
++    add(summary_dir / "summary_rows.jsonl")
++    if buckets_dir.exists():
++        for bucket in sorted(buckets_dir.glob("*.csv")):
++            add(bucket)
++
++    runs_dir = run_root / "runs"
++    if runs_dir.exists():
++        items.append(str(runs_dir))
++
++    artifacts_path = summary_dir / "artifacts_index.md"
++    lines = ["# Artifacts Index", ""]
++    lines.extend(f"- {item}" for item in items)
++    lines.append(f"- {artifacts_path}")
++    artifacts_path.write_text("\n".join(lines))
++
++
+ def main() -> None:
+     args = parse_args()
+-    if args.grid > 7 or args.grid < 1:
+-        raise SystemExit("--grid must be between 1 and 7.")
++    if args.grid < 1:
++        raise SystemExit("--grid must be >= 1.")
+ 
+     base_config = Path(args.base_config)
+     base_cfg = load_config(base_config)
+ 
+     base_beta = parse_float(base_cfg.get("beta")) or 0.05
+     base_alpha_w = parse_float(base_cfg.get("alpha_w")) or 0.08
+-    base_sigma_mu = parse_float(base_cfg.get("sigma_mu")) or 0.35
+-    base_sigma_pi = parse_float(base_cfg.get("sigma_pi")) or 0.30
+-    env_cfg = base_cfg.get("env", {}) if isinstance(base_cfg.get("env"), dict) else {}
+-    base_p_mix = parse_float(env_cfg.get("p_mix") or base_cfg.get("p_mix")) or 0.05
++    base_theta_mu_offset_scale = parse_float(base_cfg.get("theta_mu_offset_scale")) or 0.0
+ 
+     beta_values = parse_float_list(args.beta_values)
+     if beta_values is None:
+-        beta_values = scaled_grid(base_beta, DEFAULT_BETA_FACTORS, min_val=1e-5, max_val=1.0)
+-        beta_values = pick_grid(beta_values, args.grid)
+-    if len(beta_values) > 7:
+-        raise SystemExit("beta_values length must be <= 7")
++        beta_min = max(1e-5, base_beta * min(DEFAULT_BETA_FACTORS))
++        beta_max = min(1.0, base_beta * max(DEFAULT_BETA_FACTORS))
++        beta_values = linspace_values(beta_min, beta_max, args.grid)
+ 
+     alpha_values = parse_float_list(args.alpha_w_values)
+     if alpha_values is None:
+-        alpha_values = scaled_grid(base_alpha_w, DEFAULT_ALPHA_W_FACTORS, min_val=1e-6)
+-        alpha_values = pick_grid(alpha_values, args.grid)
+-    if len(alpha_values) > 7:
+-        raise SystemExit("alpha_w_values length must be <= 7")
+-
+-    offpolicy_values = parse_float_list(args.offpolicy_values)
+-    if offpolicy_values is None:
+-        if args.offpolicy_axis == "sigma_mu":
+-            base_value = base_sigma_mu
+-            offpolicy_values = scaled_grid(base_value, DEFAULT_SIGMA_FACTORS, min_val=1e-6)
+-        elif args.offpolicy_axis == "sigma_pi":
+-            base_value = base_sigma_pi
+-            offpolicy_values = scaled_grid(base_value, DEFAULT_SIGMA_FACTORS, min_val=1e-6)
+-        else:
+-            base_value = base_p_mix
+-            offpolicy_values = scaled_grid(base_value, DEFAULT_P_MIX_FACTORS, min_val=0.0, max_val=1.0)
+-        offpolicy_values = pick_grid(offpolicy_values, args.grid)
+-    if len(offpolicy_values) > 7:
+-        raise SystemExit("offpolicy_values length must be <= 7")
++        alpha_min = max(1e-6, base_alpha_w * min(DEFAULT_ALPHA_W_FACTORS))
++        alpha_max = max(alpha_min, base_alpha_w * max(DEFAULT_ALPHA_W_FACTORS))
++        alpha_values = logspace_values(alpha_min, alpha_max, args.grid)
++
++    theta_mu_offset_values = parse_float_list(args.theta_mu_offset_values)
++    if theta_mu_offset_values is None:
++        theta_min = DEFAULT_THETA_MU_OFFSET_MIN
++        theta_max = max(theta_min, DEFAULT_THETA_MU_OFFSET_MAX, base_theta_mu_offset_scale)
++        theta_mu_offset_values = linspace_values(theta_min, theta_max, args.grid)
+ 
+     seeds = parse_float_list(args.seeds)
+     seed_values: List[Optional[int]] = []
+@@ -953,13 +1051,12 @@ def main() -> None:
+         run_root = Path(args.run_root)
+     else:
+         timestamp = args.timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+-        run_root = Path(args.out_root) / timestamp
++        run_root = Path(args.out_root) / timestamp / "sweep"
+ 
+     grid_info = {
+         "beta_values": beta_values,
+         "alpha_w_values": alpha_values,
+-        "offpolicy_axis": args.offpolicy_axis,
+-        "offpolicy_values": offpolicy_values,
++        "theta_mu_offset_scale_values": theta_mu_offset_values,
+         "seed_values": seed_values,
+         "base_config": str(base_config),
+     }
+@@ -967,11 +1064,12 @@ def main() -> None:
+     if args.dry_run:
+         print("Dry run sweep plan:")
+         print(f"  run_root: {run_root}")
+-        print(f"  total_grid: {len(beta_values) * len(alpha_values) * len(offpolicy_values) * len(seed_values)}")
++        print(
++            f"  total_grid: {len(beta_values) * len(alpha_values) * len(theta_mu_offset_values) * len(seed_values)}"
++        )
+         print(f"  beta_values: {beta_values}")
+         print(f"  alpha_w_values: {alpha_values}")
+-        print(f"  offpolicy_axis: {args.offpolicy_axis}")
+-        print(f"  offpolicy_values: {offpolicy_values}")
++        print(f"  theta_mu_offset_scale_values: {theta_mu_offset_values}")
+         print(f"  seed_values: {seed_values}")
+         return
+ 
+@@ -999,21 +1097,19 @@ def main() -> None:
+             "python": python_info(),
+         },
+     )
+-    if args.pip_freeze:
+-        (meta_dir / "pip_freeze.txt").write_text(pip_freeze())
++    write_meta_artifacts(meta_dir)
+ 
+     (meta_dir / "commandline.txt").write_text(shlex.join(sys.argv))
+ 
+     run_specs: List[RunSpec] = []
+     for beta in beta_values:
+         for alpha_w in alpha_values:
+-            for offpolicy_value in offpolicy_values:
++            for theta_mu_offset_scale in theta_mu_offset_values:
+                 for seed in seed_values:
+                     params = {
+                         "beta": beta,
+                         "alpha_w": alpha_w,
+-                        "offpolicy_axis": args.offpolicy_axis,
+-                        "offpolicy_value": offpolicy_value,
++                        "theta_mu_offset_scale": theta_mu_offset_scale,
+                         "seed": seed,
+                     }
+                     run_id = run_id_for(params)
+@@ -1023,8 +1119,7 @@ def main() -> None:
+                             run_id=run_id,
+                             beta=beta,
+                             alpha_w=alpha_w,
+-                            offpolicy_axis=args.offpolicy_axis,
+-                            offpolicy_value=offpolicy_value,
++                            theta_mu_offset_scale=theta_mu_offset_scale,
+                             seed=seed,
+                             output_dir=run_dir,
+                         )
+@@ -1037,8 +1132,7 @@ def main() -> None:
+                 "run_id": spec.run_id,
+                 "beta": spec.beta,
+                 "alpha_w": spec.alpha_w,
+-                "offpolicy_axis": spec.offpolicy_axis,
+-                "offpolicy_value": spec.offpolicy_value,
++                "theta_mu_offset_scale": spec.theta_mu_offset_scale,
+                 "seed": spec.seed,
+                 "output_dir": str(spec.output_dir),
+             }
+diff --git a/tdrl_unfixed_ac/algos/train_unfixed_ac.py b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+index fd221c2..dfd2a7c 100644
+--- a/tdrl_unfixed_ac/algos/train_unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+@@ -4,6 +4,7 @@ from __future__ import annotations
+ 
+ import csv
+ import json
++import shutil
+ import time
+ import traceback
+ from copy import deepcopy
+@@ -15,6 +16,7 @@ import numpy as np
+ from tdrl_unfixed_ac.algos.unfixed_ac import (
+     LinearGaussianPolicy,
+     apply_rho_clip,
++    batch_step_scale,
+     critic_value,
+     project_to_ball,
+ )
+@@ -45,6 +47,10 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+     "theta_radius": 4.0,
+     "theta_init_scale": 0.1,
+     "w_init_scale": 0.1,
++    "theta_mu_offset_scale": 0.0,
++    "squash_action": False,
++    "log_contract_metrics": False,
++    "require_teacher_reward": True,
+     "rho_clip": None,
+     "disable_rho_clip": False,
+     "checkpoint_every": 5,
+@@ -113,8 +119,8 @@ def load_train_config(path: Optional[str] = None) -> Dict[str, Any]:
+     return config
+ 
+ 
+-def _clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    if v_max <= 0.0:
++def _clip_action(action: np.ndarray, v_max: float, clip_action: bool) -> np.ndarray:
++    if not clip_action or v_max <= 0.0:
+         return action
+     return np.clip(action, -v_max, v_max)
+ 
+@@ -136,6 +142,23 @@ def _mc_bar_phi(
+     return np.mean(np.stack(phis, axis=0), axis=0)
+ 
+ 
++def _gaussian_kl_isotropic(
++    mean_p: np.ndarray,
++    sigma_p: float,
++    mean_q: np.ndarray,
++    sigma_q: float,
++) -> np.ndarray:
++    mean_p = np.asarray(mean_p, dtype=float)
++    mean_q = np.asarray(mean_q, dtype=float)
++    var_p = float(sigma_p) ** 2
++    var_q = float(sigma_q) ** 2
++    diff = mean_q - mean_p
++    diff_norm_sq = np.sum(diff * diff, axis=-1)
++    dim = mean_p.shape[-1]
++    log_ratio = np.log(var_q / var_p)
++    return 0.5 * (dim * (var_p / var_q) + diff_norm_sq / var_q - dim + dim * log_ratio)
++
++
+ def _json_ready(obj: Any) -> Any:
+     if isinstance(obj, np.ndarray):
+         return obj.tolist()
+@@ -175,6 +198,12 @@ def _last_logged_iter(logs: list[Dict[str, Any]]) -> Optional[int]:
+     return None
+ 
+ 
++def _ensure_logs_csv(csv_path: Path, output_dir: Path) -> None:
++    logs_path = output_dir / "logs.csv"
++    if csv_path.exists() and not logs_path.exists():
++        shutil.copyfile(csv_path, logs_path)
++
++
+ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     cfg = deepcopy(config)
+     seed = int(cfg.get("seed", 0))
+@@ -191,6 +220,10 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     theta_radius = float(cfg.get("theta_radius", 0.0))
+     theta_init_scale = float(cfg.get("theta_init_scale", 0.1))
+     w_init_scale = float(cfg.get("w_init_scale", 0.1))
++    theta_mu_offset_scale = float(cfg.get("theta_mu_offset_scale", 0.0))
++    squash_action = bool(cfg.get("squash_action", False))
++    log_contract_metrics = bool(cfg.get("log_contract_metrics", False))
++    require_teacher_reward = bool(cfg.get("require_teacher_reward", True))
+     rho_clip = cfg.get("rho_clip", None)
+     disable_rho_clip = bool(cfg.get("disable_rho_clip", False))
+     checkpoint_every = int(cfg.get("checkpoint_every", 0))
+@@ -200,8 +233,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     output_dir = Path(cfg.get("output_dir", "outputs/unfixed_ac"))
+     resume = bool(cfg.get("resume", False))
+     resume_from = cfg.get("resume_from", None)
+-    total_steps = max(trajectories * horizon, 1)
+-    train_step_scale = alpha_w / total_steps
++    step_scale = batch_step_scale(trajectories, horizon)
++    train_step_scale = alpha_w * step_scale
+ 
+     output_dir.mkdir(parents=True, exist_ok=True)
+     checkpoint_dir = output_dir / "checkpoints"
+@@ -217,6 +250,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+         if env_cfg.get("seed") is None:
+             env_cfg["seed"] = seed
+         env = TorusGobletGhostEnv(config=env_cfg)
++        if require_teacher_reward and not env.use_teacher_reward:
++            raise ValueError("Teacher reward required: set env.use_teacher_reward=True.")
+ 
+         seeder = Seeder(seed)
+         init_rng = seeder.spawn()
+@@ -228,6 +263,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+ 
+         theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
+         theta_mu = np.array(theta_pi, copy=True)
++        if theta_mu_offset_scale > 0.0:
++            theta_mu += init_rng.normal(loc=0.0, scale=theta_mu_offset_scale, size=theta_mu.shape)
+         w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
+ 
+         logs = _load_existing_logs(csv_path)
+@@ -264,6 +301,7 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             k_mc=k_mc,
+             sigma_mu=sigma_mu,
+             sigma_pi=sigma_pi,
++            squash_action=squash_action,
+             rho_clip=rho_clip,
+             disable_rho_clip=disable_rho_clip,
+         )
+@@ -286,8 +324,18 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+         last_report_time = time.time()
+ 
+         for n in range(start_iter, outer_iters):
+-            mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu, v_max=env.v_max)
+-            pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi, v_max=env.v_max)
++            mu_policy = LinearGaussianPolicy(
++                theta=theta_mu,
++                sigma=sigma_mu,
++                v_max=env.v_max,
++                squash_action=squash_action,
++            )
++            pi_policy = LinearGaussianPolicy(
++                theta=theta_pi,
++                sigma=sigma_pi,
++                v_max=env.v_max,
++                squash_action=squash_action,
++            )
+ 
+             grad_w = np.zeros_like(w)
+             grad_theta = np.zeros_like(theta_pi)
+@@ -297,6 +345,10 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             rho_exec_vals = []
+             a_diff_vals = []
+             clip_count = 0
++            action_sum = np.zeros(action_dim, dtype=float)
++            action_sq_sum = np.zeros(action_dim, dtype=float)
++            action_count = 0
++            psi_samples = [] if log_contract_metrics else None
+ 
+             delta_cache = None
+             if probe_manager.enabled and probe_manager.q_kernel_enabled:
+@@ -312,11 +364,16 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+                 for t_idx in range(horizon):
+                     # ---- sample action from behavior policy mu ----
+                     a_exec = mu_policy.sample_action(psi, rollout_rng)
+-                    a_clip = _clip_action(a_exec, env.v_max)
++                    a_clip = _clip_action(a_exec, env.v_max, env.clip_action)
+                     a_diff = float(np.linalg.norm(a_exec - a_clip))
+                     a_diff_vals.append(a_diff)
+                     if a_diff > 1e-12:
+                         clip_count += 1
++                    if log_contract_metrics:
++                        action_sum += a_exec
++                        action_sq_sum += a_exec * a_exec
++                        action_count += 1
++                        psi_samples.append(np.array(psi, copy=True))
+ 
+                     # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
+                     u_exec = mu_policy.pre_squash(a_exec)
+@@ -365,9 +422,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             w_prev = np.array(w, copy=True)
+             theta_pi_prev = np.array(theta_pi, copy=True)
+ 
+-            scale = 1.0 / total_steps
+-            w = w + alpha_w * scale * grad_w
+-            theta_pi = theta_pi + alpha_pi * scale * grad_theta
++            w = w + alpha_w * step_scale * grad_w
++            theta_pi = theta_pi + alpha_pi * step_scale * grad_theta
+             theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
+ 
+             theta_pi = project_to_ball(theta_pi, theta_radius)
+@@ -443,6 +499,43 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+             critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
+             tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
+             w_norm = float(np.linalg.norm(w))
++            extra_metrics = {}
++            if log_contract_metrics:
++                w_norm_contract = float(np.linalg.norm(w) / np.sqrt(feature_dim))
++                theta_pi_norm = float(np.linalg.norm(theta_pi) / np.sqrt(actor_dim))
++                theta_mu_norm = float(np.linalg.norm(theta_mu) / np.sqrt(actor_dim))
++                tracking_gap_contract = float(np.linalg.norm(theta_pi - theta_mu) / np.sqrt(actor_dim))
++                w_dot_wr_over_n = float(np.dot(w, teacher_w) / feature_dim)
++                w_norm_denom = float(np.linalg.norm(teacher_w) * np.linalg.norm(w))
++                cos_w_wr = float(np.dot(w, teacher_w) / w_norm_denom) if w_norm_denom > 0 else float("nan")
++                if action_count > 0:
++                    mean_vec = action_sum / action_count
++                    var_vec = action_sq_sum / action_count - mean_vec * mean_vec
++                    action_mean = float(np.mean(mean_vec))
++                    action_var = float(np.mean(var_vec))
++                else:
++                    action_mean = float("nan")
++                    action_var = float("nan")
++                dist_action_kl = float("nan")
++                if psi_samples:
++                    psi_batch = np.stack(psi_samples, axis=0)
++                    mean_pi = (psi_batch @ theta_pi) / np.sqrt(actor_dim)
++                    mean_mu = (psi_batch @ theta_mu) / np.sqrt(actor_dim)
++                    kl_vals = _gaussian_kl_isotropic(mean_pi, sigma_pi, mean_mu, sigma_mu)
++                    if kl_vals.size:
++                        dist_action_kl = float(np.mean(kl_vals))
++                extra_metrics = {
++                    "w_norm_contract": w_norm_contract,
++                    "theta_pi_norm": theta_pi_norm,
++                    "theta_mu_norm": theta_mu_norm,
++                    "tracking_gap_contract": tracking_gap_contract,
++                    "w_dot_wr_over_n": w_dot_wr_over_n,
++                    "cos_w_wr": cos_w_wr,
++                    "action_mean": action_mean,
++                    "action_var": action_var,
++                    "dist_action_kl": dist_action_kl,
++                    "td_loss_est": float(td_loss / 2.0) if np.isfinite(td_loss) else float("nan"),
++                }
+ 
+             log_row = {
+                 "iter": n,
+@@ -476,6 +569,8 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+                 "delta_w_norm": delta_w_norm,
+                 **probe_defaults,
+             }
++            if extra_metrics:
++                log_row.update(extra_metrics)
+             probe_updates = probe_manager.maybe_run(
+                 iteration=n,
+                 td_loss=td_loss,
+@@ -556,3 +651,4 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+         finally:
+             if csv_handle is not None:
+                 csv_handle.close()
++            _ensure_logs_csv(csv_path, output_dir)
+diff --git a/tdrl_unfixed_ac/algos/unfixed_ac.py b/tdrl_unfixed_ac/algos/unfixed_ac.py
+index ca85193..79fc72e 100644
+--- a/tdrl_unfixed_ac/algos/unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/unfixed_ac.py
+@@ -44,6 +44,7 @@ class LinearGaussianPolicy:
+     theta: np.ndarray
+     sigma: float
+     v_max: float
++    squash_action: bool = False
+ 
+     def mean(self, psi: np.ndarray) -> np.ndarray:
+         return policy_mean(self.theta, psi)
+@@ -60,10 +61,14 @@ class LinearGaussianPolicy:
+         rng = rng if rng is not None else np.random.default_rng()
+         mean = self.mean(psi)
+         u = rng.normal(loc=mean, scale=self.sigma, size=self.action_dim)
+-        return _squash_action(u, self.v_max)
++        if self.squash_action:
++            return _squash_action(u, self.v_max)
++        return u
+ 
+     def pre_squash(self, action: np.ndarray) -> np.ndarray:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
++        if not self.squash_action:
++            return action
+         return _unsquash_action(action, self.v_max)
+ 
+     def log_prob_pre_squash(self, u: np.ndarray, psi: np.ndarray) -> float:
+@@ -74,6 +79,8 @@ class LinearGaussianPolicy:
+     def log_prob(self, action: np.ndarray, psi: np.ndarray) -> float:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+         mean = self.mean(psi)
++        if not self.squash_action:
++            return _gaussian_log_prob(action, mean, self.sigma)
+         u = _unsquash_action(action, self.v_max)
+         log_base = _gaussian_log_prob(u, mean, self.sigma)
+         log_det = float(np.sum(np.log(self.v_max) + _log1m_tanh2(u)))
+@@ -84,7 +91,7 @@ class LinearGaussianPolicy:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+         psi = np.asarray(psi, dtype=float).reshape(self.actor_dim)
+         mean = self.mean(psi)
+-        u = _unsquash_action(action, self.v_max)
++        u = self.pre_squash(action)
+         diff = u - mean
+         scale = 1.0 / (self.sigma * self.sigma * np.sqrt(self.actor_dim))
+         return np.outer(psi, diff) * scale
+@@ -117,6 +124,13 @@ def critic_value(w: np.ndarray, phi: np.ndarray) -> float:
+     return float(np.dot(w, phi) / np.sqrt(w.shape[0]))
+ 
+ 
++def batch_step_scale(trajectories: int, horizon: int) -> float:
++    """Compute 1 / (sqrt(B) * T) scaling for batch updates."""
++    b_val = max(int(trajectories), 1)
++    t_val = max(int(horizon), 1)
++    return 1.0 / (np.sqrt(b_val) * t_val)
++
++
+ def project_to_ball(theta: np.ndarray, radius: float) -> np.ndarray:
+     """Project theta onto L2 ball of given radius."""
+     if radius <= 0.0:
+diff --git a/tdrl_unfixed_ac/configs/default.yaml b/tdrl_unfixed_ac/configs/default.yaml
+index f0c45e9..be88823 100644
+--- a/tdrl_unfixed_ac/configs/default.yaml
++++ b/tdrl_unfixed_ac/configs/default.yaml
+@@ -2,6 +2,7 @@
+   "torus_size": 1.0,
+   "dt": 0.05,
+   "v_max": 0.4,
++  "clip_action": false,
+   "v_ghost": 0.3,
+   "sigma_env": 0.01,
+   "sigma_ghost": 0.01,
+diff --git a/tdrl_unfixed_ac/envs/torus_gg.py b/tdrl_unfixed_ac/envs/torus_gg.py
+index be0c04a..3bfd3f5 100644
+--- a/tdrl_unfixed_ac/envs/torus_gg.py
++++ b/tdrl_unfixed_ac/envs/torus_gg.py
+@@ -69,6 +69,7 @@ class TorusGobletGhostEnv:
+         self.p_type_positive = float(self.cfg["p_type_positive"])
+         self.type_resample_p = float(self.cfg["type_resample_p"])
+         self.use_teacher_reward = bool(self.cfg.get("use_teacher_reward", True))
++        self.clip_action = bool(self.cfg.get("clip_action", False))
+         self.feature_dim = int(self.cfg.get("feature_dim", 128))
+         self.actor_feature_dim = int(self.cfg.get("actor_feature_dim", 32))
+         self.c_psi = float(self.cfg.get("c_psi", 1.0))
+@@ -237,7 +238,7 @@ class TorusGobletGhostEnv:
+         return np.where(mask, 1.0, -1.0)
+ 
+     def _clip_action(self, action: np.ndarray) -> np.ndarray:
+-        if self.v_max <= 0.0:
++        if not self.clip_action or self.v_max <= 0.0:
+             return action
+         return np.clip(action, -self.v_max, self.v_max)
+ 
+diff --git a/tdrl_unfixed_ac/probes/common.py b/tdrl_unfixed_ac/probes/common.py
+index ed3c6b5..0710de0 100644
+--- a/tdrl_unfixed_ac/probes/common.py
++++ b/tdrl_unfixed_ac/probes/common.py
+@@ -10,9 +10,9 @@ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_cli
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+ 
+ 
+-def clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    """Clip action per component to [-v_max, v_max]."""
+-    if v_max <= 0.0:
++def clip_action(action: np.ndarray, v_max: float, clip_action: bool) -> np.ndarray:
++    """Clip action per component to [-v_max, v_max] if enabled."""
++    if not clip_action or v_max <= 0.0:
+         return action
+     return np.clip(action, -v_max, v_max)
+ 
+@@ -30,7 +30,7 @@ def mc_bar_phi(
+     phis = []
+     for _ in range(k_mc):
+         action = policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
++        action = clip_action(action, env.v_max, env.clip_action)
+         phis.append(env.compute_features(action)["phi"])
+     return np.mean(np.stack(phis, axis=0), axis=0)
+ 
+@@ -61,7 +61,7 @@ def collect_critic_batch(
+ 
+     for _ in range(batch_size):
+         a = mu_policy.sample_action(psi, rng)
+-        a = clip_action(a, env.v_max)
++        a = clip_action(a, env.v_max, env.clip_action)
+ 
+         logp_pi = pi_policy.log_prob(a, psi)
+         logp_mu = mu_policy.log_prob(a, psi)
+diff --git a/tdrl_unfixed_ac/probes/distribution_probe.py b/tdrl_unfixed_ac/probes/distribution_probe.py
+index 52eb3b0..cb77294 100644
+--- a/tdrl_unfixed_ac/probes/distribution_probe.py
++++ b/tdrl_unfixed_ac/probes/distribution_probe.py
+@@ -31,7 +31,7 @@ def _collect_state_features(
+         psi = features["psi"]
+         psi_vecs.append(psi)
+         action = policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
++        action = clip_action(action, env.v_max, env.clip_action)
+         _, _, terminated, truncated, _ = env.step(action)
+         if terminated or truncated:
+             raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+@@ -60,7 +60,7 @@ def _collect_rho_samples(
+     rhos = []
+     for _ in range(num_samples):
+         action = mu_policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
++        action = clip_action(action, env.v_max, env.clip_action)
+         logp_pi = pi_policy.log_prob(action, psi)
+         logp_mu = mu_policy.log_prob(action, psi)
+         rho_raw = float(np.exp(logp_pi - logp_mu))
+@@ -173,6 +173,7 @@ def run_distribution_probe(
+     theta_pi: np.ndarray,
+     sigma_mu: float,
+     sigma_pi: float,
++    squash_action: bool,
+     num_samples: int,
+     seed: Optional[int],
+     action_samples: int = 64,
+@@ -188,8 +189,18 @@ def run_distribution_probe(
+     env_pi = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 13))
+     env_rho = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 17))
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env_mu.v_max)
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env_mu.v_max)
++    mu_policy = LinearGaussianPolicy(
++        theta=np.array(theta_mu, copy=True),
++        sigma=float(sigma_mu),
++        v_max=env_mu.v_max,
++        squash_action=bool(squash_action),
++    )
++    pi_policy = LinearGaussianPolicy(
++        theta=np.array(theta_pi, copy=True),
++        sigma=float(sigma_pi),
++        v_max=env_mu.v_max,
++        squash_action=bool(squash_action),
++    )
+ 
+     obs_mu, psi_mu = _collect_state_features(env_mu, mu_policy, rng_mu, num_samples)
+     obs_pi, psi_pi = _collect_state_features(env_pi, pi_policy, rng_pi, num_samples)
+diff --git a/tdrl_unfixed_ac/probes/fixed_point_probe.py b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+index 00782d3..5dacd1b 100644
+--- a/tdrl_unfixed_ac/probes/fixed_point_probe.py
++++ b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+@@ -19,6 +19,7 @@ def run_fixed_point_probe(
+     w_init: np.ndarray,
+     sigma_mu: float,
+     sigma_pi: float,
++    squash_action: bool,
+     alpha_w: float,
+     gamma: float,
+     k_mc: int,
+@@ -33,8 +34,18 @@ def run_fixed_point_probe(
+     rng = np.random.default_rng(seed)
+     env = TorusGobletGhostEnv(config=env_config, rng=rng)
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env.v_max)
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env.v_max)
++    mu_policy = LinearGaussianPolicy(
++        theta=np.array(theta_mu, copy=True),
++        sigma=float(sigma_mu),
++        v_max=env.v_max,
++        squash_action=bool(squash_action),
++    )
++    pi_policy = LinearGaussianPolicy(
++        theta=np.array(theta_pi, copy=True),
++        sigma=float(sigma_pi),
++        v_max=env.v_max,
++        squash_action=bool(squash_action),
++    )
+ 
+     batch = collect_critic_batch(
+         env,
+diff --git a/tdrl_unfixed_ac/probes/manager.py b/tdrl_unfixed_ac/probes/manager.py
+index 3bc5692..550b0e3 100644
+--- a/tdrl_unfixed_ac/probes/manager.py
++++ b/tdrl_unfixed_ac/probes/manager.py
+@@ -33,6 +33,7 @@ class ProbeManager:
+         k_mc: int,
+         sigma_mu: float,
+         sigma_pi: float,
++        squash_action: bool,
+         rho_clip: Optional[float],
+         disable_rho_clip: bool,
+     ) -> None:
+@@ -66,6 +67,7 @@ class ProbeManager:
+         self.k_mc = int(k_mc)
+         self.sigma_mu = float(sigma_mu)
+         self.sigma_pi = float(sigma_pi)
++        self.squash_action = bool(squash_action)
+         self.rho_clip = rho_clip
+         self.disable_rho_clip = bool(disable_rho_clip)
+ 
+@@ -143,6 +145,7 @@ class ProbeManager:
+                     w_init=w,
+                     sigma_mu=self.sigma_mu,
+                     sigma_pi=self.sigma_pi,
++                    squash_action=self.squash_action,
+                     alpha_w=float(fixed_cfg["alpha_w"]),
+                     gamma=float(fixed_cfg["gamma"]),
+                     k_mc=int(fixed_cfg["k_mc"]),
+@@ -204,6 +207,7 @@ class ProbeManager:
+                     theta_pi=theta_pi,
+                     sigma_mu=self.sigma_mu,
+                     sigma_pi=self.sigma_pi,
++                    squash_action=self.squash_action,
+                     alpha_w=float(stability_cfg["alpha_w"]),
+                     train_step_scale=self.train_step_scale,
+                     gamma=float(stability_cfg["gamma"]),
+@@ -244,6 +248,7 @@ class ProbeManager:
+                     theta_pi=theta_pi,
+                     sigma_mu=self.sigma_mu,
+                     sigma_pi=self.sigma_pi,
++                    squash_action=self.squash_action,
+                     num_samples=int(dist_cfg["num_samples"]),
+                     action_samples=int(dist_cfg["action_samples"]),
+                     rho_clip=self.rho_clip,
+diff --git a/tdrl_unfixed_ac/probes/stability_probe.py b/tdrl_unfixed_ac/probes/stability_probe.py
+index 58c53d9..438a53d 100644
+--- a/tdrl_unfixed_ac/probes/stability_probe.py
++++ b/tdrl_unfixed_ac/probes/stability_probe.py
+@@ -18,6 +18,7 @@ def run_stability_probe(
+     theta_pi: np.ndarray,
+     sigma_mu: float,
+     sigma_pi: float,
++    squash_action: bool,
+     alpha_w: float,
+     train_step_scale: float,
+     gamma: float,
+@@ -31,8 +32,18 @@ def run_stability_probe(
+     """Estimate local amplification (spectral radius proxy) for critic updates."""
+     rng = np.random.default_rng(seed)
+     v_max = float(env_config.get("v_max", 1.0))
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=v_max)
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=v_max)
++    mu_policy = LinearGaussianPolicy(
++        theta=np.array(theta_mu, copy=True),
++        sigma=float(sigma_mu),
++        v_max=v_max,
++        squash_action=bool(squash_action),
++    )
++    pi_policy = LinearGaussianPolicy(
++        theta=np.array(theta_pi, copy=True),
++        sigma=float(sigma_pi),
++        v_max=v_max,
++        squash_action=bool(squash_action),
++    )
+ 
+     def _estimate_proxy(batch: Dict[str, np.ndarray], local_rng: np.random.Generator) -> float:
+         phi = batch["phi"]
+diff --git a/tdrl_unfixed_ac/reporting/run_report.py b/tdrl_unfixed_ac/reporting/run_report.py
+index 446ce25..48f485a 100644
+--- a/tdrl_unfixed_ac/reporting/run_report.py
++++ b/tdrl_unfixed_ac/reporting/run_report.py
+@@ -317,10 +317,9 @@ def _train_step_scale(cfg: Dict[str, Any]) -> Optional[float]:
+         horizon = int(cfg.get("horizon", 0) or 0)
+     except (TypeError, ValueError):
+         return None
+-    total_steps = max(trajectories * horizon, 0)
+-    if alpha_w <= 0.0 or total_steps <= 0:
++    if alpha_w <= 0.0 or trajectories <= 0 or horizon <= 0:
+         return None
+-    return alpha_w / total_steps
++    return alpha_w / (math.sqrt(trajectories) * horizon)
+ 
+ 
+ def _get_git_commit(run_dir: Path) -> Optional[str]:
+@@ -559,6 +558,39 @@ def _health_checks(
+             "applicable": True,
+         }
+ 
++    # sigma_condition
++    sigma_mu = cfg.get("sigma_mu")
++    sigma_pi = cfg.get("sigma_pi")
++    try:
++        sigma_mu_val = float(sigma_mu) if sigma_mu is not None else None
++        sigma_pi_val = float(sigma_pi) if sigma_pi is not None else None
++    except (TypeError, ValueError):
++        sigma_mu_val = None
++        sigma_pi_val = None
++    if sigma_mu_val is None or sigma_pi_val is None or sigma_mu_val <= 0.0 or sigma_pi_val <= 0.0:
++        checks["sigma_condition"] = {
++            "pass": True,
++            "reason": "sigma parameters unavailable",
++            "observed": {"sigma_mu": sigma_mu, "sigma_pi": sigma_pi},
++            "applicable": False,
++        }
++    else:
++        lhs = sigma_pi_val * sigma_pi_val
++        rhs = 2.0 * sigma_mu_val * sigma_mu_val
++        passed = lhs < rhs
++        reason = "sigma_pi^2 < 2 sigma_mu^2" if passed else "sigma_pi^2 >= 2 sigma_mu^2"
++        checks["sigma_condition"] = {
++            "pass": passed,
++            "reason": reason,
++            "observed": {
++                "sigma_mu": sigma_mu_val,
++                "sigma_pi": sigma_pi_val,
++                "sigma_pi2": lhs,
++                "two_sigma_mu2": rhs,
++            },
++            "applicable": True,
++        }
++
+     # on_policy_expected
+     check_name = cfg.get("check_name")
+     applicable = _is_on_policy_run(cfg)

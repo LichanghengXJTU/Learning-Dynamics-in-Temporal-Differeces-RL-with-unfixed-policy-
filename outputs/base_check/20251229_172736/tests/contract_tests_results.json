@@ -1,0 +1,44 @@
+{
+  "seed": 0,
+  "tests": [
+    {
+      "name": "T1_score_autograd",
+      "pass": true,
+      "error": 4.440892098500626e-16,
+      "threshold": 1e-06,
+      "details": "actor_dim=5, action_dim=3"
+    },
+    {
+      "name": "T2_rho_ratio",
+      "pass": true,
+      "error": 0.0,
+      "threshold": 1e-06,
+      "details": "rho=31.19, log_rho=3.44"
+    },
+    {
+      "name": "T3_td_error",
+      "pass": true,
+      "error": 1.1102230246251565e-16,
+      "threshold": 1e-07,
+      "details": "delta_code=-0.8278, delta_manual=-0.8278"
+    },
+    {
+      "name": "T4_critic_update_scaling",
+      "pass": true,
+      "error": 0.0,
+      "threshold": 1e-07,
+      "details": "scale_ratio=0.5, ratio_err=0"
+    },
+    {
+      "name": "T5_semi_gradient",
+      "pass": true,
+      "error": 0.0,
+      "threshold": 0.0,
+      "details": "numpy update; no autograd frameworks imported"
+    }
+  ],
+  "summary": {
+    "passed": true,
+    "num_tests": 5
+  }
+}

@@ -1,0 +1,1 @@
+scripts/sweep_stepC.py --timestamp 20251230_004605 --base-config configs/train_plateau.yaml --outer-iters 200 --grid 10 --jobs 1

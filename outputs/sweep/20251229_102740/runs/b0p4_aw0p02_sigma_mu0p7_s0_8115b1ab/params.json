@@ -1,0 +1,10 @@
+{
+  "run_id": "b0p4_aw0p02_sigma_mu0p7_s0_8115b1ab",
+  "output_dir": "outputs/sweep/20251229_102740/runs/b0p4_aw0p02_sigma_mu0p7_s0_8115b1ab",
+  "base_config": "configs/train_plateau.yaml",
+  "beta": 0.4,
+  "alpha_w": 0.02,
+  "offpolicy_axis": "sigma_mu",
+  "offpolicy_value": 0.7,
+  "seed": 0
+}

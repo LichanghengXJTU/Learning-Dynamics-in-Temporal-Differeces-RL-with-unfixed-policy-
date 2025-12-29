@@ -1,13 +1,13 @@
 # Step C sweep
 
 ## Quick start
-Run a 7x7x7 sweep (default axes) and summarize:
+Run a 10x10x10 sweep (alpha_w logspace, beta linspace, theta_mu_offset_scale linspace) and summarize:
 
 ```bash
-python scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 1000 --grid 7 --jobs 1
+python scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 200 --grid 10 --jobs 1
 ```
 
-Outputs are written under `outputs/sweep/<timestamp>/`.
+Outputs are written under `outputs/base_check/<timestamp>/sweep/`.
 
 ## Resume
 Reuse a prior sweep root:
@@ -19,7 +19,7 @@ python scripts/sweep_stepC.py --timestamp <YYYYmmdd_HHMMSS> --resume --jobs 1
 Or point to the sweep root directly:
 
 ```bash
-python scripts/sweep_stepC.py --run-root outputs/sweep/<timestamp> --resume --jobs 1
+python scripts/sweep_stepC.py --run-root outputs/base_check/<timestamp>/sweep --resume --jobs 1
 ```
 
 ## Pilot (2x2x2)
@@ -32,13 +32,14 @@ python scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-i
 ## Summary outputs
 After the sweep finishes:
 
-- `outputs/sweep/<timestamp>/summary/summary.md` includes bucketed top-k tables and thresholds.
-- `outputs/sweep/<timestamp>/summary/summary.csv` has the full grid.
-- `outputs/sweep/<timestamp>/summary/buckets/` contains per-bucket CSVs.
+- `outputs/base_check/<timestamp>/sweep/summary/summary.md` includes bucketed top-k tables and thresholds.
+- `outputs/base_check/<timestamp>/sweep/summary/summary.csv` has the full grid.
+- `outputs/base_check/<timestamp>/sweep/summary/summary.json` has the full grid in JSON.
+- `outputs/base_check/<timestamp>/sweep/summary/buckets/` contains per-bucket CSVs.
 
 To bias selection toward true off-policy points, pick from `offpolicy_stable_top.csv`. For instability boundary points, check the "Stability boundary" table in `summary.md`, then rerun those configurations with longer `--outer-iters`.
 
 ## Common tweaks
 - Adjust thresholds: `--eps-slope`, `--eps-drift`, `--offpolicy-threshold`.
-- Change off-policy axis: `--offpolicy-axis sigma_mu|sigma_pi|p_mix`.
+- Override grid values: `--beta-values`, `--alpha-w-values`, `--theta-mu-offset-values`.
 - Print the plan only: `--dry-run`.

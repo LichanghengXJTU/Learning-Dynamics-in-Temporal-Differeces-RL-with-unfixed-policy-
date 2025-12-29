@@ -1,0 +1,61 @@
+{
+  "config": {
+    "seed": 22,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.1,
+    "beta": 0.0,
+    "sigma_mu": 0.35,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C2_offpolicy_fixed_behavior",
+    "metrics": {
+      "td_loss_est": {
+        "start": 0.00011952533685621208,
+        "end": 0.00010536126474695543,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 0.00033639774831214705,
+        "end": 0.0007752566669211833,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.020638910826986698,
+        "end": 0.04741554999441492,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.8931188266408496,
+        "end": 2.307316805734979,
+        "trend": "up"
+      },
+      "tracking_gap": {
+        "start": 0.6695870254061862,
+        "end": 0.6696444941133685,
+        "trend": "flat"
+      },
+      "theta_pi_norm": {
+        "start": 0.13018704979783427,
+        "end": 0.13029524073045734,
+        "trend": "flat"
+      },
+      "theta_mu_norm": {
+        "start": 0.7071067811863785,
+        "end": 0.7071067811863785,
+        "trend": "flat"
+      }
+    },
+    "evidence": {
+      "note": "evidence not enforced for this case"
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_180135/runs/C2_offpolicy_fixed_behavior/metrics.csv"
+}

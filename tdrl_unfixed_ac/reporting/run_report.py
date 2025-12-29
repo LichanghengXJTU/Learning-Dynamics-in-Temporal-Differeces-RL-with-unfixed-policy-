@@ -317,10 +317,9 @@ def _train_step_scale(cfg: Dict[str, Any]) -> Optional[float]:
         horizon = int(cfg.get("horizon", 0) or 0)
     except (TypeError, ValueError):
         return None
-    total_steps = max(trajectories * horizon, 0)
-    if alpha_w <= 0.0 or total_steps <= 0:
+    if alpha_w <= 0.0 or trajectories <= 0 or horizon <= 0:
         return None
-    return alpha_w / total_steps
+    return alpha_w / (math.sqrt(trajectories) * horizon)
 
 
 def _get_git_commit(run_dir: Path) -> Optional[str]:
@@ -556,6 +555,39 @@ def _health_checks(
             "pass": passed,
             "reason": reason,
             "observed": {"rho_column": rho_col, "max": max_val, "threshold": rho_threshold},
+            "applicable": True,
+        }
+
+    # sigma_condition
+    sigma_mu = cfg.get("sigma_mu")
+    sigma_pi = cfg.get("sigma_pi")
+    try:
+        sigma_mu_val = float(sigma_mu) if sigma_mu is not None else None
+        sigma_pi_val = float(sigma_pi) if sigma_pi is not None else None
+    except (TypeError, ValueError):
+        sigma_mu_val = None
+        sigma_pi_val = None
+    if sigma_mu_val is None or sigma_pi_val is None or sigma_mu_val <= 0.0 or sigma_pi_val <= 0.0:
+        checks["sigma_condition"] = {
+            "pass": True,
+            "reason": "sigma parameters unavailable",
+            "observed": {"sigma_mu": sigma_mu, "sigma_pi": sigma_pi},
+            "applicable": False,
+        }
+    else:
+        lhs = sigma_pi_val * sigma_pi_val
+        rhs = 2.0 * sigma_mu_val * sigma_mu_val
+        passed = lhs < rhs
+        reason = "sigma_pi^2 < 2 sigma_mu^2" if passed else "sigma_pi^2 >= 2 sigma_mu^2"
+        checks["sigma_condition"] = {
+            "pass": passed,
+            "reason": reason,
+            "observed": {
+                "sigma_mu": sigma_mu_val,
+                "sigma_pi": sigma_pi_val,
+                "sigma_pi2": lhs,
+                "two_sigma_mu2": rhs,
+            },
             "applicable": True,
         }
 

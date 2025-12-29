@@ -1,0 +1,53 @@
+{
+  "config": {
+    "seed": 55,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.0,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.1,
+    "beta": 0.2,
+    "sigma_mu": 0.2,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C5_gamma_zero_sanity",
+    "metrics": {
+      "td_loss_est": {
+        "start": 0.00010313180003947621,
+        "end": 0.00010483272794886528,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": -0.001975903747445943,
+        "end": -0.0014346882162729392,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": -0.11856525384587466,
+        "end": -0.08769026610000015,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.0,
+        "end": 0.9999975039646496,
+        "trend": "flat"
+      },
+      "tracking_gap": {
+        "start": 7.771276462048531e-05,
+        "end": 0.00010166728055354768,
+        "trend": "flat"
+      }
+    },
+    "evidence": {
+      "td_loss_down": false,
+      "w_alignment_up": true,
+      "rho_finite": true
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_172736/runs/C5_gamma_zero_sanity/metrics.csv"
+}

@@ -69,6 +69,7 @@ class TorusGobletGhostEnv:
         self.p_type_positive = float(self.cfg["p_type_positive"])
         self.type_resample_p = float(self.cfg["type_resample_p"])
         self.use_teacher_reward = bool(self.cfg.get("use_teacher_reward", True))
+        self.clip_action = bool(self.cfg.get("clip_action", False))
         self.feature_dim = int(self.cfg.get("feature_dim", 128))
         self.actor_feature_dim = int(self.cfg.get("actor_feature_dim", 32))
         self.c_psi = float(self.cfg.get("c_psi", 1.0))
@@ -237,7 +238,7 @@ class TorusGobletGhostEnv:
         return np.where(mask, 1.0, -1.0)
 
     def _clip_action(self, action: np.ndarray) -> np.ndarray:
-        if self.v_max <= 0.0:
+        if not self.clip_action or self.v_max <= 0.0:
             return action
         return np.clip(action, -self.v_max, self.v_max)
 

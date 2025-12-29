@@ -1,0 +1,63 @@
+{
+  "config": {
+    "seed": 11,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.1,
+    "beta": 1.0,
+    "sigma_mu": 0.2,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C1_onpolicy_actor_on",
+    "metrics": {
+      "td_loss_est": {
+        "start": 5.0428232948087644e-05,
+        "end": 8.028023372154532e-05,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 0.001206073881332187,
+        "end": 0.001702548778235368,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.07583838950031863,
+        "end": 0.10695456987795933,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.0,
+        "end": 1.0,
+        "trend": "flat"
+      },
+      "tracking_gap": {
+        "start": 0.0,
+        "end": 0.0,
+        "trend": "flat"
+      },
+      "theta_pi_norm": {
+        "start": 0.14588060540040093,
+        "end": 0.1460038852749107,
+        "trend": "up"
+      },
+      "theta_mu_norm": {
+        "start": 0.14588060540040093,
+        "end": 0.1460038852749107,
+        "trend": "up"
+      }
+    },
+    "evidence": {
+      "theta_pi_changed": true,
+      "tracking_gap_small": true,
+      "rho_near_one": true
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_175939/runs/C1_onpolicy_actor_on/metrics.csv"
+}

@@ -1,0 +1,428 @@
+{
+  "cases": [
+    {
+      "config": {
+        "seed": 0,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.0,
+        "beta": 1.0,
+        "sigma_mu": 0.2,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C0_onpolicy_critic_only",
+        "metrics": {
+          "td_loss_est": {
+            "start": 0.00012361064992749398,
+            "end": 8.585954685795317e-05,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": 0.00014830726064217438,
+            "end": 0.0006314608110094913,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": 0.00894810969304336,
+            "end": 0.03827639474986888,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.0,
+            "end": 1.0,
+            "trend": "flat"
+          },
+          "tracking_gap": {
+            "start": 0.0,
+            "end": 0.0,
+            "trend": "flat"
+          }
+        },
+        "evidence": {
+          "td_loss_down": true,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": true,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C0_onpolicy_critic_only/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 11,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.1,
+        "beta": 1.0,
+        "sigma_mu": 0.2,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C1_onpolicy_actor_on",
+        "metrics": {
+          "td_loss_est": {
+            "start": 5.0428232948087644e-05,
+            "end": 8.028023372154532e-05,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": 0.001206073881332187,
+            "end": 0.001702548778235368,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": 0.07583838950031863,
+            "end": 0.10695456987795933,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.0,
+            "end": 1.0,
+            "trend": "flat"
+          },
+          "tracking_gap": {
+            "start": 0.0,
+            "end": 0.0,
+            "trend": "flat"
+          }
+        },
+        "evidence": {
+          "td_loss_down": false,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": false,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C1_onpolicy_actor_on/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 22,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.1,
+        "beta": 0.0,
+        "sigma_mu": 0.35,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C2_offpolicy_fixed_behavior",
+        "metrics": {
+          "td_loss_est": {
+            "start": 0.00011952533685621208,
+            "end": 0.00010536126474695543,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": 0.00033639774831214705,
+            "end": 0.0007752566669211833,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": 0.020638910826986698,
+            "end": 0.04741554999441492,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.8931188266408496,
+            "end": 2.307316805734979,
+            "trend": "up"
+          },
+          "tracking_gap": {
+            "start": 0.6695870254061862,
+            "end": 0.6696444941133685,
+            "trend": "flat"
+          }
+        },
+        "evidence": {
+          "td_loss_down": true,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": true,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C2_offpolicy_fixed_behavior/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 33,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.1,
+        "beta": 0.1,
+        "sigma_mu": 0.35,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C3_offpolicy_tracking_beta_small",
+        "metrics": {
+          "td_loss_est": {
+            "start": 1.779658701686145e-05,
+            "end": 7.987397875313137e-05,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": 3.396453792799158e-05,
+            "end": 0.0005507578141377954,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": 0.0021184217842507022,
+            "end": 0.03432813201941787,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.730701067414644,
+            "end": 2.0601482095981636,
+            "trend": "up"
+          },
+          "tracking_gap": {
+            "start": 0.6833139652062888,
+            "end": 0.00017873502880047778,
+            "trend": "down"
+          }
+        },
+        "evidence": {
+          "td_loss_down": false,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": true,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C3_offpolicy_tracking_beta_small/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 44,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.1,
+        "beta": 0.5,
+        "sigma_mu": 0.35,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C4_offpolicy_tracking_beta_mid",
+        "metrics": {
+          "td_loss_est": {
+            "start": 9.511883547145254e-05,
+            "end": 6.917551513265241e-05,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": -0.0022285102099809497,
+            "end": -0.0016744403046916184,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": -0.1292234320792913,
+            "end": -0.0977214752430057,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.7567662904454429,
+            "end": 1.834743591730202,
+            "trend": "down"
+          },
+          "tracking_gap": {
+            "start": 0.38785628029550095,
+            "end": 4.189079778701953e-05,
+            "trend": "down"
+          }
+        },
+        "evidence": {
+          "td_loss_down": true,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": true,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C4_offpolicy_tracking_beta_mid/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 55,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.0,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.1,
+        "beta": 0.2,
+        "sigma_mu": 0.2,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C5_gamma_zero_sanity",
+        "metrics": {
+          "td_loss_est": {
+            "start": 6.286725704368013e-05,
+            "end": 7.123143834107069e-05,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": -0.0019781366138229284,
+            "end": -0.001429902351719536,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": -0.11869244870334578,
+            "end": -0.08741346053018335,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.0,
+            "end": 0.9999944755862414,
+            "trend": "flat"
+          },
+          "tracking_gap": {
+            "start": 4.0887356597561806e-05,
+            "end": 9.403725950499022e-05,
+            "trend": "flat"
+          }
+        },
+        "evidence": {
+          "td_loss_down": false,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": true,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C5_gamma_zero_sanity/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 66,
+        "N": null,
+        "N_act": null,
+        "B": 1,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.0,
+        "beta": 1.0,
+        "sigma_mu": 0.2,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C6_batch_scaling_check_B1",
+        "metrics": {
+          "td_loss_est": {
+            "start": 0.00014356027663617026,
+            "end": 0.00017765677076615654,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": 0.0009287080235111168,
+            "end": 0.0011599765887698415,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": 0.05598796547179811,
+            "end": 0.07013047007992292,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.0,
+            "end": 1.0,
+            "trend": "flat"
+          },
+          "tracking_gap": {
+            "start": 0.0,
+            "end": 0.0,
+            "trend": "flat"
+          }
+        },
+        "evidence": {
+          "td_loss_down": false,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": false,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C6_batch_scaling_check_B1/metrics.csv"
+    },
+    {
+      "config": {
+        "seed": 77,
+        "N": null,
+        "N_act": null,
+        "B": 4,
+        "T": 30,
+        "gamma": 0.95,
+        "alpha_w": 0.2,
+        "alpha_pi": 0.0,
+        "beta": 1.0,
+        "sigma_mu": 0.2,
+        "sigma_pi": 0.2
+      },
+      "summary": {
+        "case": "C7_batch_scaling_check_B4",
+        "metrics": {
+          "td_loss_est": {
+            "start": 1.4878237760711154e-05,
+            "end": 0.0001483147851661374,
+            "trend": "flat"
+          },
+          "w_dot_wr_over_n": {
+            "start": -0.0005250590739750532,
+            "end": 4.0088143149008245e-05,
+            "trend": "up"
+          },
+          "cos_w_wr": {
+            "start": -0.038331910578201574,
+            "end": 0.002955629599499563,
+            "trend": "up"
+          },
+          "mean_rho2": {
+            "start": 1.0,
+            "end": 1.0,
+            "trend": "flat"
+          },
+          "tracking_gap": {
+            "start": 0.0,
+            "end": 0.0,
+            "trend": "flat"
+          }
+        },
+        "evidence": {
+          "td_loss_down": false,
+          "w_alignment_up": true,
+          "rho_finite": true
+        },
+        "evidence_pass": false,
+        "sigma_condition": true
+      },
+      "metrics_path": "outputs/base_check/20251229_175708/runs/C7_batch_scaling_check_B4/metrics.csv"
+    }
+  ]
+}

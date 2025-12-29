@@ -2,6 +2,7 @@
   "torus_size": 1.0,
   "dt": 0.05,
   "v_max": 0.4,
+  "clip_action": false,
   "v_ghost": 0.3,
   "sigma_env": 0.01,
   "sigma_ghost": 0.01,

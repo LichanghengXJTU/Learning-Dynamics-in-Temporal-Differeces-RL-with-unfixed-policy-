@@ -1,0 +1,53 @@
+{
+  "config": {
+    "seed": 22,
+    "N": null,
+    "N_act": null,
+    "B": 4,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.1,
+    "beta": 0.0,
+    "sigma_mu": 0.35,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C2_offpolicy_fixed_behavior",
+    "metrics": {
+      "td_loss_est": {
+        "start": 0.00011491995216831342,
+        "end": 0.0001003764924624682,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 0.00033328055072635073,
+        "end": 0.0008156695004356757,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.02044872728420593,
+        "end": 0.0498852731412114,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.8560976633501556,
+        "end": 2.2418146635811182,
+        "trend": "up"
+      },
+      "tracking_gap": {
+        "start": 0.6695846953539951,
+        "end": 0.6696598564355655,
+        "trend": "up"
+      }
+    },
+    "evidence": {
+      "td_loss_down": true,
+      "w_alignment_up": true,
+      "rho_finite": true
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_172736/runs/C2_offpolicy_fixed_behavior/metrics.csv"
+}

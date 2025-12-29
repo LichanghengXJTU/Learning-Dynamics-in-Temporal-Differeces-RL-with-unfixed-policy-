@@ -44,6 +44,7 @@ class LinearGaussianPolicy:
     theta: np.ndarray
     sigma: float
     v_max: float
+    squash_action: bool = False
 
     def mean(self, psi: np.ndarray) -> np.ndarray:
         return policy_mean(self.theta, psi)
@@ -60,10 +61,14 @@ class LinearGaussianPolicy:
         rng = rng if rng is not None else np.random.default_rng()
         mean = self.mean(psi)
         u = rng.normal(loc=mean, scale=self.sigma, size=self.action_dim)
-        return _squash_action(u, self.v_max)
+        if self.squash_action:
+            return _squash_action(u, self.v_max)
+        return u
 
     def pre_squash(self, action: np.ndarray) -> np.ndarray:
         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+        if not self.squash_action:
+            return action
         return _unsquash_action(action, self.v_max)
 
     def log_prob_pre_squash(self, u: np.ndarray, psi: np.ndarray) -> float:
@@ -74,6 +79,8 @@ class LinearGaussianPolicy:
     def log_prob(self, action: np.ndarray, psi: np.ndarray) -> float:
         action = np.asarray(action, dtype=float).reshape(self.action_dim)
         mean = self.mean(psi)
+        if not self.squash_action:
+            return _gaussian_log_prob(action, mean, self.sigma)
         u = _unsquash_action(action, self.v_max)
         log_base = _gaussian_log_prob(u, mean, self.sigma)
         log_det = float(np.sum(np.log(self.v_max) + _log1m_tanh2(u)))
@@ -84,7 +91,7 @@ class LinearGaussianPolicy:
         action = np.asarray(action, dtype=float).reshape(self.action_dim)
         psi = np.asarray(psi, dtype=float).reshape(self.actor_dim)
         mean = self.mean(psi)
-        u = _unsquash_action(action, self.v_max)
+        u = self.pre_squash(action)
         diff = u - mean
         scale = 1.0 / (self.sigma * self.sigma * np.sqrt(self.actor_dim))
         return np.outer(psi, diff) * scale
@@ -115,6 +122,13 @@ def critic_value(w: np.ndarray, phi: np.ndarray) -> float:
     w = np.asarray(w, dtype=float).reshape(-1)
     phi = np.asarray(phi, dtype=float).reshape(-1)
     return float(np.dot(w, phi) / np.sqrt(w.shape[0]))
+
+
+def batch_step_scale(trajectories: int, horizon: int) -> float:
+    """Compute 1 / (sqrt(B) * T) scaling for batch updates."""
+    b_val = max(int(trajectories), 1)
+    t_val = max(int(horizon), 1)
+    return 1.0 / (np.sqrt(b_val) * t_val)
 
 
 def project_to_ball(theta: np.ndarray, radius: float) -> np.ndarray:

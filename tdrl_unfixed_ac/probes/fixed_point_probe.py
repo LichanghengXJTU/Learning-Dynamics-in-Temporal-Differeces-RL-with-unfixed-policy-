@@ -19,6 +19,7 @@ def run_fixed_point_probe(
     w_init: np.ndarray,
     sigma_mu: float,
     sigma_pi: float,
+    squash_action: bool,
     alpha_w: float,
     gamma: float,
     k_mc: int,
@@ -33,8 +34,18 @@ def run_fixed_point_probe(
     rng = np.random.default_rng(seed)
     env = TorusGobletGhostEnv(config=env_config, rng=rng)
 
-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env.v_max)
-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env.v_max)
+    mu_policy = LinearGaussianPolicy(
+        theta=np.array(theta_mu, copy=True),
+        sigma=float(sigma_mu),
+        v_max=env.v_max,
+        squash_action=bool(squash_action),
+    )
+    pi_policy = LinearGaussianPolicy(
+        theta=np.array(theta_pi, copy=True),
+        sigma=float(sigma_pi),
+        v_max=env.v_max,
+        squash_action=bool(squash_action),
+    )
 
     batch = collect_critic_batch(
         env,

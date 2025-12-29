@@ -1,0 +1,9 @@
+{
+  "run_id": "b0p005_aw0p02_tmos0p3889_s0_b8c731fc",
+  "output_dir": "outputs/base_check/20251230_004605/sweep/runs/b0p005_aw0p02_tmos0p3889_s0_b8c731fc",
+  "base_config": "configs/train_plateau.yaml",
+  "beta": 0.005,
+  "alpha_w": 0.02,
+  "theta_mu_offset_scale": 0.388888888889,
+  "seed": 0
+}

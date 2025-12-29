@@ -33,6 +33,7 @@ class ProbeManager:
         k_mc: int,
         sigma_mu: float,
         sigma_pi: float,
+        squash_action: bool,
         rho_clip: Optional[float],
         disable_rho_clip: bool,
     ) -> None:
@@ -66,6 +67,7 @@ class ProbeManager:
         self.k_mc = int(k_mc)
         self.sigma_mu = float(sigma_mu)
         self.sigma_pi = float(sigma_pi)
+        self.squash_action = bool(squash_action)
         self.rho_clip = rho_clip
         self.disable_rho_clip = bool(disable_rho_clip)
 
@@ -143,6 +145,7 @@ class ProbeManager:
                     w_init=w,
                     sigma_mu=self.sigma_mu,
                     sigma_pi=self.sigma_pi,
+                    squash_action=self.squash_action,
                     alpha_w=float(fixed_cfg["alpha_w"]),
                     gamma=float(fixed_cfg["gamma"]),
                     k_mc=int(fixed_cfg["k_mc"]),
@@ -204,6 +207,7 @@ class ProbeManager:
                     theta_pi=theta_pi,
                     sigma_mu=self.sigma_mu,
                     sigma_pi=self.sigma_pi,
+                    squash_action=self.squash_action,
                     alpha_w=float(stability_cfg["alpha_w"]),
                     train_step_scale=self.train_step_scale,
                     gamma=float(stability_cfg["gamma"]),
@@ -244,6 +248,7 @@ class ProbeManager:
                     theta_pi=theta_pi,
                     sigma_mu=self.sigma_mu,
                     sigma_pi=self.sigma_pi,
+                    squash_action=self.squash_action,
                     num_samples=int(dist_cfg["num_samples"]),
                     action_samples=int(dist_cfg["action_samples"]),
                     rho_clip=self.rho_clip,

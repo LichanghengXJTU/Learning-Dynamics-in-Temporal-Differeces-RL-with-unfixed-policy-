@@ -31,7 +31,7 @@ def _collect_state_features(
         psi = features["psi"]
         psi_vecs.append(psi)
         action = policy.sample_action(psi, rng)
-        action = clip_action(action, env.v_max)
+        action = clip_action(action, env.v_max, env.clip_action)
         _, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             raise RuntimeError("Environment should be continuing but returned a terminal flag.")
@@ -60,7 +60,7 @@ def _collect_rho_samples(
     rhos = []
     for _ in range(num_samples):
         action = mu_policy.sample_action(psi, rng)
-        action = clip_action(action, env.v_max)
+        action = clip_action(action, env.v_max, env.clip_action)
         logp_pi = pi_policy.log_prob(action, psi)
         logp_mu = mu_policy.log_prob(action, psi)
         rho_raw = float(np.exp(logp_pi - logp_mu))
@@ -173,6 +173,7 @@ def run_distribution_probe(
     theta_pi: np.ndarray,
     sigma_mu: float,
     sigma_pi: float,
+    squash_action: bool,
     num_samples: int,
     seed: Optional[int],
     action_samples: int = 64,
@@ -188,8 +189,18 @@ def run_distribution_probe(
     env_pi = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 13))
     env_rho = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 17))
 
-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env_mu.v_max)
-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env_mu.v_max)
+    mu_policy = LinearGaussianPolicy(
+        theta=np.array(theta_mu, copy=True),
+        sigma=float(sigma_mu),
+        v_max=env_mu.v_max,
+        squash_action=bool(squash_action),
+    )
+    pi_policy = LinearGaussianPolicy(
+        theta=np.array(theta_pi, copy=True),
+        sigma=float(sigma_pi),
+        v_max=env_mu.v_max,
+        squash_action=bool(squash_action),
+    )
 
     obs_mu, psi_mu = _collect_state_features(env_mu, mu_policy, rng_mu, num_samples)
     obs_pi, psi_pi = _collect_state_features(env_pi, pi_policy, rng_pi, num_samples)

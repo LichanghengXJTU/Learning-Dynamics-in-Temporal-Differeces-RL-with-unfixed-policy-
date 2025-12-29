@@ -10,9 +10,9 @@ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_cli
 from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
 
 
-def clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
-    """Clip action per component to [-v_max, v_max]."""
-    if v_max <= 0.0:
+def clip_action(action: np.ndarray, v_max: float, clip_action: bool) -> np.ndarray:
+    """Clip action per component to [-v_max, v_max] if enabled."""
+    if not clip_action or v_max <= 0.0:
         return action
     return np.clip(action, -v_max, v_max)
 
@@ -30,7 +30,7 @@ def mc_bar_phi(
     phis = []
     for _ in range(k_mc):
         action = policy.sample_action(psi, rng)
-        action = clip_action(action, env.v_max)
+        action = clip_action(action, env.v_max, env.clip_action)
         phis.append(env.compute_features(action)["phi"])
     return np.mean(np.stack(phis, axis=0), axis=0)
 
@@ -61,7 +61,7 @@ def collect_critic_batch(
 
     for _ in range(batch_size):
         a = mu_policy.sample_action(psi, rng)
-        a = clip_action(a, env.v_max)
+        a = clip_action(a, env.v_max, env.clip_action)
 
         logp_pi = pi_policy.log_prob(a, psi)
         logp_mu = mu_policy.log_prob(a, psi)

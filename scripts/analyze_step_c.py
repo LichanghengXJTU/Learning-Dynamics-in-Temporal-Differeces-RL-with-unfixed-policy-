@@ -707,8 +707,9 @@ def _scale_note(summary: Dict[str, object]) -> Tuple[str, float]:
     alpha_w = float(summary.get("alpha_w", 0.0) or 0.0)
     trajectories = int(summary.get("trajectories", 0) or 0)
     horizon = int(summary.get("horizon", 0) or 0)
-    total_steps = max(trajectories * horizon, 1)
-    train_step_scale = alpha_w / total_steps if alpha_w > 0 else float("nan")
+    b_val = max(trajectories, 1)
+    t_val = max(horizon, 1)
+    train_step_scale = alpha_w / (math.sqrt(b_val) * t_val) if alpha_w > 0 else float("nan")
     stability_scale = float("nan")
     probe_path = run_dir / "probes" / "stability_probe.csv"
     if probe_path.exists():
@@ -720,7 +721,7 @@ def _scale_note(summary: Dict[str, object]) -> Tuple[str, float]:
         "alpha_w = {alpha_w}\n"
         "trajectories = {trajectories}\n"
         "horizon = {horizon}\n"
-        "train_step_scale = alpha_w / (trajectories * horizon)\n"
+        "train_step_scale = alpha_w / (sqrt(trajectories) * horizon)\n"
         "stability_probe_step_scale = {stability_scale}\n"
         "ratio = stability_probe_step_scale / train_step_scale\n"
     ).format(

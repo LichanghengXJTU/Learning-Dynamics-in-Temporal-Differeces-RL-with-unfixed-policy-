@@ -1,0 +1,60 @@
+{
+  "results": [
+    {
+      "run_id": "b0p005_aw0p02_sigma_mu0p175_s0_eb4a791b",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p005_aw0p02_sigma_mu0p175_s0_eb4a791b",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2707.671774864197
+    },
+    {
+      "run_id": "b0p005_aw0p02_sigma_mu0p7_s0_013c6677",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p005_aw0p02_sigma_mu0p7_s0_013c6677",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2694.9658749103546
+    },
+    {
+      "run_id": "b0p005_aw0p24_sigma_mu0p175_s0_92b1233d",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p005_aw0p24_sigma_mu0p175_s0_92b1233d",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2699.4149029254913
+    },
+    {
+      "run_id": "b0p005_aw0p24_sigma_mu0p7_s0_433ed98c",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p005_aw0p24_sigma_mu0p7_s0_433ed98c",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2712.5102949142456
+    },
+    {
+      "run_id": "b0p4_aw0p02_sigma_mu0p175_s0_5f7e73cd",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p4_aw0p02_sigma_mu0p175_s0_5f7e73cd",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2706.749434232712
+    },
+    {
+      "run_id": "b0p4_aw0p02_sigma_mu0p7_s0_8115b1ab",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p4_aw0p02_sigma_mu0p7_s0_8115b1ab",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2738.9387497901917
+    },
+    {
+      "run_id": "b0p4_aw0p24_sigma_mu0p175_s0_286495a9",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p4_aw0p24_sigma_mu0p175_s0_286495a9",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2695.344694852829
+    },
+    {
+      "run_id": "b0p4_aw0p24_sigma_mu0p7_s0_d8de6485",
+      "run_dir": "outputs/sweep/20251229_102740/runs/b0p4_aw0p24_sigma_mu0p7_s0_d8de6485",
+      "status": "ok",
+      "returncode": 0,
+      "duration_sec": 2716.623550891876
+    }
+  ]
+}

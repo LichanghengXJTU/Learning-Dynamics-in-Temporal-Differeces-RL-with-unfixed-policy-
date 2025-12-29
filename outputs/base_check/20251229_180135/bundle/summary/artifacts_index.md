@@ -1,0 +1,26 @@
+# Artifacts Index
+
+- outputs/base_check/20251229_180135/meta/git_head.txt
+- outputs/base_check/20251229_180135/meta/git_status.txt
+- outputs/base_check/20251229_180135/meta/git_diff.patch
+- outputs/base_check/20251229_180135/meta/python_version.txt
+- outputs/base_check/20251229_180135/meta/requirements_freeze.txt
+- outputs/base_check/20251229_180135/meta/uname.txt
+- outputs/base_check/20251229_180135/contract/ac_contract_code_map.md
+- outputs/base_check/20251229_180135/contract/ac_compliance_report.md
+- outputs/base_check/20251229_180135/tests/contract_tests_report.md
+- outputs/base_check/20251229_180135/tests/contract_tests_results.json
+- outputs/base_check/20251229_180135/tests/contract_tests.log
+- outputs/base_check/20251229_180135/summary/base_check_summary.csv
+- outputs/base_check/20251229_180135/summary/base_check_summary.json
+- outputs/base_check/20251229_180135/summary/base_check_summary.md
+- outputs/base_check/20251229_180135/summary/artifacts_index.md
+- outputs/base_check/20251229_180135/runs/C0_onpolicy_critic_only/run_report.md
+- outputs/base_check/20251229_180135/runs/C1_onpolicy_actor_on/run_report.md
+- outputs/base_check/20251229_180135/runs/C2_offpolicy_fixed_behavior/run_report.md
+- outputs/base_check/20251229_180135/runs/C3_offpolicy_tracking_beta_small/run_report.md
+- outputs/base_check/20251229_180135/runs/C4_offpolicy_tracking_beta_mid/run_report.md
+- outputs/base_check/20251229_180135/runs/C5_gamma_zero_sanity/run_report.md
+- outputs/base_check/20251229_180135/runs/C6_batch_scaling_check_B1/run_report.md
+- outputs/base_check/20251229_180135/runs/C7_batch_scaling_check_B4/run_report.md
+- outputs/base_check/20251229_180135/patches/contract_alignment.diff

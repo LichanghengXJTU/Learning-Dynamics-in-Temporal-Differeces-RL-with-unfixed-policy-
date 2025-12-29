@@ -1,0 +1,53 @@
+{
+  "config": {
+    "seed": 66,
+    "N": null,
+    "N_act": null,
+    "B": 1,
+    "T": 30,
+    "gamma": 0.95,
+    "alpha_w": 0.2,
+    "alpha_pi": 0.0,
+    "beta": 1.0,
+    "sigma_mu": 0.2,
+    "sigma_pi": 0.2
+  },
+  "summary": {
+    "case": "C6_batch_scaling_check_B1",
+    "metrics": {
+      "td_loss_est": {
+        "start": 0.00034755832885131736,
+        "end": 0.00018185286953150025,
+        "trend": "flat"
+      },
+      "w_dot_wr_over_n": {
+        "start": 0.0009329618156202206,
+        "end": 0.001181055611078978,
+        "trend": "up"
+      },
+      "cos_w_wr": {
+        "start": 0.05625011905297047,
+        "end": 0.07143106453797265,
+        "trend": "up"
+      },
+      "mean_rho2": {
+        "start": 1.0,
+        "end": 1.0,
+        "trend": "flat"
+      },
+      "tracking_gap": {
+        "start": 0.0,
+        "end": 0.0,
+        "trend": "flat"
+      }
+    },
+    "evidence": {
+      "td_loss_down": true,
+      "w_alignment_up": true,
+      "rho_finite": true
+    },
+    "evidence_pass": true,
+    "sigma_condition": true
+  },
+  "metrics_path": "outputs/base_check/20251229_172736/runs/C6_batch_scaling_check_B1/metrics.csv"
+}
