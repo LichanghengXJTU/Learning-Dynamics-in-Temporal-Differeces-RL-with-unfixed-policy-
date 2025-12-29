@@ -1,0 +1,52 @@
+{
+  "seed": 0,
+  "outer_iters": 200,
+  "trajectories": 16,
+  "horizon": 200,
+  "gamma": 0.99,
+  "alpha_w": 0.2,
+  "alpha_pi": 0.12,
+  "beta": 0.01,
+  "sigma_mu": 0.25,
+  "sigma_pi": 0.4,
+  "K_mc": 4,
+  "theta_radius": 8.0,
+  "theta_init_scale": 0.2,
+  "w_init_scale": 0.2,
+  "rho_clip": 10.0,
+  "disable_rho_clip": true,
+  "checkpoint_every": 20,
+  "log_every": 1,
+  "env_config_path": "configs/default.yaml",
+  "env": {
+    "feature_dim": 2048,
+    "actor_feature_dim": 512,
+    "p_mix": 0.0
+  },
+  "probes": {
+    "enabled": true,
+    "every": 10,
+    "plateau": {
+      "enabled": true
+    },
+    "fixed_point": {
+      "batch_size": 4096,
+      "k_mc": 8,
+      "max_iters": 2000,
+      "tol": 1e-07
+    },
+    "stability": {
+      "batch_size": 4096,
+      "k_mc": 8,
+      "n_power_iters": 80
+    },
+    "distribution": {
+      "num_samples": 4096
+    },
+    "q_kernel": {
+      "enabled": true,
+      "batch_size": 8,
+      "max_horizon": 200
+    }
+  }
+}

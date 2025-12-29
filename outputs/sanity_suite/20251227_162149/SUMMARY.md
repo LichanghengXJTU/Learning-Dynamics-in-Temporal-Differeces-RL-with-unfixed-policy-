@@ -1,0 +1,8 @@
+# Summary
+
+| run | label | status | mean_rho2 | stability_proxy | fixed_point_drift | dist_mmd2 | reasons | run_dir |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| fixed_pi | fixed_pi | FAIL | 1.48 | 1 | 0.01721 | 0.01805 | no_nan_inf: found NaN/Inf in numeric columns | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/fixed_pi |
+| full_triad_short | full_triad_short | FAIL | 1.67 | 1 | 0.02569 | 0.03616 | no_nan_inf: found NaN/Inf in numeric columns | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/full_triad_short |
+| no_bootstrap | no_bootstrap | FAIL | 1.48 | 1 | 0.02956 | 0.01805 | no_nan_inf: found NaN/Inf in numeric columns | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/no_bootstrap |
+| on_policy | on_policy | FAIL | 1 | 1 | 0.01524 | 0.02035 | no_nan_inf: found NaN/Inf in numeric columns; on_policy_expected: on-policy expectations not met | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/on_policy |

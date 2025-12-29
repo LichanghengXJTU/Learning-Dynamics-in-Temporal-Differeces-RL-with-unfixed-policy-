@@ -1,0 +1,2897 @@
+diff --git a/configs/train_instability.yaml b/configs/train_instability.yaml
+index 75ee618..dab1acf 100644
+--- a/configs/train_instability.yaml
++++ b/configs/train_instability.yaml
+@@ -1,6 +1,6 @@
+ {
+   "seed": 0,
+-  "outer_iters": 2000,
++  "outer_iters": 200,
+   "trajectories": 16,
+   "horizon": 200,
+   "gamma": 0.99,
+@@ -13,15 +13,19 @@
+   "theta_radius": 8.0,
+   "theta_init_scale": 0.2,
+   "w_init_scale": 0.2,
++  "rho_clip": 10.0,
++  "disable_rho_clip": true,
+   "checkpoint_every": 20,
+   "log_every": 1,
+   "env_config_path": "configs/default.yaml",
+   "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.01 },
+   "probes": {
+     "enabled": true,
+-    "every": 20,
+-    "fixed_point": { "batch_size": 4096, "k_mc": 4, "max_iters": 2000, "tol": 1e-7 },
+-    "stability":   { "batch_size": 4096, "k_mc": 4, "n_power_iters": 80 },
+-    "distribution":{ "num_samples": 4096 }
++    "every": 10,
++    "plateau": { "enabled": true },
++    "fixed_point": { "batch_size": 4096, "k_mc": 8, "max_iters": 2000, "tol": 1e-7 },
++    "stability":   { "batch_size": 4096, "k_mc": 8, "n_power_iters": 80 },
++    "distribution":{ "num_samples": 4096 },
++    "q_kernel": { "enabled": true, "batch_size": 8, "max_horizon": 200 }
+   }
+ }
+diff --git a/configs/train_plateau.yaml b/configs/train_plateau.yaml
+index be99f73..90068e8 100644
+--- a/configs/train_plateau.yaml
++++ b/configs/train_plateau.yaml
+@@ -1,6 +1,6 @@
+ {
+   "seed": 0,
+-  "outer_iters": 2000,
++  "outer_iters": 200,
+   "trajectories": 16,
+   "horizon": 200,
+   "gamma": 0.99,
+@@ -13,15 +13,19 @@
+   "theta_radius": 6.0,
+   "theta_init_scale": 0.1,
+   "w_init_scale": 0.1,
++  "rho_clip": 10.0,
++  "disable_rho_clip": false,
+   "checkpoint_every": 20,
+   "log_every": 1,
+   "env_config_path": "configs/default.yaml",
+   "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.05 },
+   "probes": {
+     "enabled": true,
+-    "every": 50,
+-    "fixed_point": { "batch_size": 4096, "k_mc": 4, "max_iters": 2000, "tol": 1e-7 },
+-    "stability":   { "batch_size": 4096, "k_mc": 4, "n_power_iters": 80 },
+-    "distribution":{ "num_samples": 4096 }
++    "every": 10,
++    "plateau": { "enabled": true },
++    "fixed_point": { "batch_size": 4096, "k_mc": 8, "max_iters": 2000, "tol": 1e-7 },
++    "stability":   { "batch_size": 4096, "k_mc": 8, "n_power_iters": 80 },
++    "distribution":{ "num_samples": 4096 },
++    "q_kernel": { "enabled": true, "batch_size": 8, "max_horizon": 200 }
+   }
+ }
+diff --git a/scripts/run_train.py b/scripts/run_train.py
+index e0b06f9..64b42a7 100644
+--- a/scripts/run_train.py
++++ b/scripts/run_train.py
+@@ -21,6 +21,24 @@ def parse_args() -> argparse.Namespace:
+     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
+     parser.add_argument("--beta", type=float, default=None, help="Override tracking beta.")
+     parser.add_argument("--p-mix", type=float, default=None, help="Override environment p_mix.")
++    parser.add_argument("--alpha-w", type=float, default=None, help="Override critic step size.")
++    parser.add_argument("--alpha-pi", type=float, default=None, help="Override actor step size.")
++    parser.add_argument("--sigma-mu", type=float, default=None, help="Override behavior policy sigma.")
++    parser.add_argument("--sigma-pi", type=float, default=None, help="Override target policy sigma.")
++    parser.add_argument("--gamma", type=float, default=None, help="Override discount factor.")
++    parser.add_argument("--theta-radius", type=float, default=None, help="Override policy parameter radius.")
++    parser.add_argument("--outer-iters", type=int, default=None, help="Override outer training iterations.")
++    parser.add_argument("--rho-clip", type=float, default=None, help="Override rho clip upper bound.")
++    parser.add_argument("--disable-rho-clip", action="store_true", help="Disable rho clipping.")
++    parser.add_argument("--resume", action="store_true", help="Resume from latest checkpoint in output dir.")
++    parser.add_argument("--resume-from", type=str, default=None, help="Resume from explicit checkpoint path.")
++    parser.add_argument("--report-every", type=int, default=None, help="Generate partial run report every N iters.")
++    parser.add_argument(
++        "--report-every-seconds",
++        type=float,
++        default=None,
++        help="Generate partial run report every N seconds.",
++    )
+     return parser.parse_args()
+ 
+ 
+@@ -35,6 +53,32 @@ def main() -> None:
+         cfg["beta"] = args.beta
+     if args.p_mix is not None:
+         cfg.setdefault("env", {})["p_mix"] = args.p_mix
++    if args.alpha_w is not None:
++        cfg["alpha_w"] = args.alpha_w
++    if args.alpha_pi is not None:
++        cfg["alpha_pi"] = args.alpha_pi
++    if args.sigma_mu is not None:
++        cfg["sigma_mu"] = args.sigma_mu
++    if args.sigma_pi is not None:
++        cfg["sigma_pi"] = args.sigma_pi
++    if args.gamma is not None:
++        cfg["gamma"] = args.gamma
++    if args.theta_radius is not None:
++        cfg["theta_radius"] = args.theta_radius
++    if args.outer_iters is not None:
++        cfg["outer_iters"] = args.outer_iters
++    if args.rho_clip is not None:
++        cfg["rho_clip"] = args.rho_clip
++    if args.disable_rho_clip:
++        cfg["disable_rho_clip"] = True
++    if args.resume:
++        cfg["resume"] = True
++    if args.resume_from is not None:
++        cfg["resume_from"] = args.resume_from
++    if args.report_every is not None:
++        cfg["report_every"] = args.report_every
++    if args.report_every_seconds is not None:
++        cfg["report_every_seconds"] = args.report_every_seconds
+ 
+     result = train_unfixed_ac(cfg)
+     print(f"Training complete. Logs at {result['csv_path']}")
+diff --git a/tdrl_unfixed_ac/algos/train_unfixed_ac.py b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+index c21171e..4f25e99 100644
+--- a/tdrl_unfixed_ac/algos/train_unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+@@ -4,15 +4,23 @@ from __future__ import annotations
+ 
+ import csv
+ import json
++import time
++import traceback
+ from copy import deepcopy
+ from pathlib import Path
+ from typing import Any, Dict, Optional
+ 
+ import numpy as np
+ 
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, critic_value, project_to_ball
++from tdrl_unfixed_ac.algos.unfixed_ac import (
++    LinearGaussianPolicy,
++    apply_rho_clip,
++    critic_value,
++    project_to_ball,
++)
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv, load_config as load_env_config
+ from tdrl_unfixed_ac.probes import ProbeManager
++from tdrl_unfixed_ac.reporting import generate_run_report
+ from tdrl_unfixed_ac.utils.seeding import Seeder
+ 
+ try:
+@@ -37,9 +45,15 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+     "theta_radius": 4.0,
+     "theta_init_scale": 0.1,
+     "w_init_scale": 0.1,
++    "rho_clip": None,
++    "disable_rho_clip": False,
+     "checkpoint_every": 5,
+     "log_every": 1,
++    "report_every": 0,
++    "report_every_seconds": 0,
+     "output_dir": "outputs/unfixed_ac",
++    "resume": False,
++    "resume_from": None,
+     "env_config_path": None,
+     "env": {},
+     "probes": {
+@@ -67,6 +81,11 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+             "enabled": True,
+             "num_samples": 512,
+         },
++        "q_kernel": {
++            "enabled": False,
++            "batch_size": 8,
++            "max_horizon": 200,
++        },
+     },
+ }
+ 
+@@ -127,6 +146,37 @@ def _json_ready(obj: Any) -> Any:
+     return obj
+ 
+ 
++def _save_checkpoint(path: Path, **payload: Any) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with path.open("wb") as handle:
++        np.savez(handle, **payload)
++
++
++def _load_checkpoint(path: Path) -> Dict[str, Any]:
++    with np.load(path, allow_pickle=True) as data:
++        return {key: data[key] for key in data.files}
++
++
++def _load_existing_logs(csv_path: Path) -> list[Dict[str, Any]]:
++    if not csv_path.exists():
++        return []
++    with csv_path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        return list(reader)
++
++
++def _last_logged_iter(logs: list[Dict[str, Any]]) -> Optional[int]:
++    for row in reversed(logs):
++        raw = row.get("iter")
++        if raw is None or str(raw).strip() == "":
++            continue
++        try:
++            return int(float(raw))
++        except ValueError:
++            continue
++    return None
++
++
+ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     cfg = deepcopy(config)
+     seed = int(cfg.get("seed", 0))
+@@ -143,168 +193,310 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     theta_radius = float(cfg.get("theta_radius", 0.0))
+     theta_init_scale = float(cfg.get("theta_init_scale", 0.1))
+     w_init_scale = float(cfg.get("w_init_scale", 0.1))
++    rho_clip = cfg.get("rho_clip", None)
++    disable_rho_clip = bool(cfg.get("disable_rho_clip", False))
+     checkpoint_every = int(cfg.get("checkpoint_every", 0))
+     log_every = int(cfg.get("log_every", 1))
++    report_every = int(cfg.get("report_every", 0) or 0)
++    report_every_seconds = float(cfg.get("report_every_seconds", 0) or 0.0)
+     output_dir = Path(cfg.get("output_dir", "outputs/unfixed_ac"))
+-
+-    env_cfg_path = cfg.get("env_config_path", None)
+-    env_cfg = load_env_config(env_cfg_path) if env_cfg_path else load_env_config()
+-    env_cfg.update(cfg.get("env", {}))
+-    if env_cfg.get("seed") is None:
+-        env_cfg["seed"] = seed
+-    env = TorusGobletGhostEnv(config=env_cfg)
+-
+-    seeder = Seeder(seed)
+-    init_rng = seeder.spawn()
+-    rollout_rng = seeder.spawn()
+-
+-    action_dim = int(env.critic_features_map.action_dim)
+-    actor_dim = int(env.actor_feature_dim)
+-    feature_dim = int(env.feature_dim)
+-
+-    theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
+-    theta_mu = np.array(theta_pi, copy=True)
+-    w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
+-
+-    teacher_w = np.array(env.teacher_reward.w_R, copy=True)
++    resume = bool(cfg.get("resume", False))
++    resume_from = cfg.get("resume_from", None)
++    total_steps = max(trajectories * horizon, 1)
++    train_step_scale = alpha_w / total_steps
+ 
+     output_dir.mkdir(parents=True, exist_ok=True)
+     checkpoint_dir = output_dir / "checkpoints"
+     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+-
+-    probe_manager = ProbeManager(
+-        cfg.get("probes", {}),
+-        output_dir=output_dir,
+-        env_config=env_cfg,
+-        seed=seed,
+-        alpha_w=alpha_w,
+-        gamma=gamma,
+-        k_mc=k_mc,
+-        sigma_mu=sigma_mu,
+-        sigma_pi=sigma_pi,
+-    )
+-    probe_defaults = probe_manager.log_defaults()
+-
+-    with (output_dir / "config.json").open("w") as handle:
+-        json.dump({k: _json_ready(v) for k, v in cfg.items()}, handle, indent=2)
+-
+-    logs = []
+-    total_steps = max(trajectories * horizon, 1)
+-    seed_max = np.iinfo(np.int32).max
+-
+-    for n in range(outer_iters):
+-        mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu)
+-        pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi)
+-
+-        grad_w = np.zeros_like(w)
+-        grad_theta = np.zeros_like(theta_pi)
+-        td_errors = []
+-        rho_sq = []
+-
+-        for _ in range(trajectories):
+-            env.reset(seed=int(rollout_rng.integers(0, seed_max)))
+-            zero_action = np.zeros(2, dtype=float)
+-            feat0 = env.compute_features(zero_action)
+-            psi = feat0["psi"]
+-            for _ in range(horizon):
+-                # ---- sample action from behavior policy mu ----
+-                a = mu_policy.sample_action(psi, rollout_rng)
+-                a = _clip_action(a, env.v_max)  # keep consistent with env._clip_action
+-
+-                # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
+-                logp_pi = pi_policy.log_prob(a, psi)
+-                logp_mu = mu_policy.log_prob(a, psi)
+-                rho = float(np.exp(logp_pi - logp_mu))
+-
+-                # ---- step env (reward + phi are consistent via info["phi"]) ----
+-                obs, reward, terminated, truncated, info = env.step(a)
+-
+-                phi = info["phi"]  # phi(s_t, a_t) used for reward + TD
+-                psi_next = info["psi_next"]  # psi(s_{t+1})
+-
+-                # ---- compute bar_phi(s_{t+1}) = E_{a'~pi}[phi(s_{t+1},a')] ----
+-                bar_phi = _mc_bar_phi(env, pi_policy, psi_next, rollout_rng, k_mc=k_mc)
+-
+-                # ---- TD error ----
+-                q_sa = critic_value(w, phi)
+-                q_next = critic_value(w, bar_phi)
+-                delta = float(reward + gamma * q_next - q_sa)
+-
+-                # ---- actor score grad (target policy) ----
+-                g = pi_policy.score(a, psi)  # grad_theta log pi(a|s)
+-
+-                # ---- accumulate gradients ----
+-                grad_w += rho * delta * phi
+-                grad_theta += rho * delta * g
+-
+-                td_errors.append(delta)
+-                rho_sq.append(rho * rho)
+-
+-                # advance
+-                psi = psi_next
+-                if terminated or truncated:
+-                    break
+-
+-        scale = 1.0 / total_steps
+-        w = w + alpha_w * scale * grad_w
+-        theta_pi = theta_pi + alpha_pi * scale * grad_theta
+-        theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
+-
+-        theta_pi = project_to_ball(theta_pi, theta_radius)
+-        theta_mu = project_to_ball(theta_mu, theta_radius)
+-
+-        td_loss = float(np.mean(np.square(td_errors))) if td_errors else float("nan")
+-        critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
+-        tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
+-        mean_rho2 = float(np.mean(rho_sq)) if rho_sq else float("nan")
+-        w_norm = float(np.linalg.norm(w))
+-
+-        log_row = {
+-            "iter": n,
+-            "td_loss": td_loss,
+-            "critic_teacher_error": critic_teacher_error,
+-            "tracking_gap": tracking_gap,
+-            "mean_rho2": mean_rho2,
+-            "w_norm": w_norm,
+-            **probe_defaults,
+-        }
+-        probe_updates = probe_manager.maybe_run(
+-            iteration=n, td_loss=td_loss, w=w, theta_mu=theta_mu, theta_pi=theta_pi
++    csv_path = output_dir / "learning_curves.csv"
++    exception: Optional[str] = None
++
++    csv_handle = None
++    try:
++        env_cfg_path = cfg.get("env_config_path", None)
++        env_cfg = load_env_config(env_cfg_path) if env_cfg_path else load_env_config()
++        env_cfg.update(cfg.get("env", {}))
++        if env_cfg.get("seed") is None:
++            env_cfg["seed"] = seed
++        env = TorusGobletGhostEnv(config=env_cfg)
++
++        seeder = Seeder(seed)
++        init_rng = seeder.spawn()
++        rollout_rng = seeder.spawn()
++
++        action_dim = int(env.critic_features_map.action_dim)
++        actor_dim = int(env.actor_feature_dim)
++        feature_dim = int(env.feature_dim)
++
++        theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
++        theta_mu = np.array(theta_pi, copy=True)
++        w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
++
++        logs = _load_existing_logs(csv_path)
++        last_logged = _last_logged_iter(logs)
++        start_iter = 0
++        resume_path = Path(resume_from) if resume_from else None
++        if resume_path is None and resume:
++            resume_path = checkpoint_dir / "latest.pt"
++        if resume_path and resume_path.exists():
++            ckpt = _load_checkpoint(resume_path)
++            theta_mu = np.array(ckpt.get("theta_mu", theta_mu), copy=True)
++            theta_pi = np.array(ckpt.get("theta_pi", theta_pi), copy=True)
++            w = np.array(ckpt.get("w", w), copy=True)
++            ckpt_iter = ckpt.get("iter")
++            if ckpt_iter is not None:
++                try:
++                    start_iter = int(ckpt_iter) + 1
++                except (TypeError, ValueError):
++                    start_iter = 0
++            print(f"Resuming from checkpoint: {resume_path}")
++        if last_logged is not None:
++            start_iter = max(start_iter, last_logged + 1)
++
++        teacher_w = np.array(env.teacher_reward.w_R, copy=True)
++
++        probe_manager = ProbeManager(
++            cfg.get("probes", {}),
++            output_dir=output_dir,
++            env_config=env_cfg,
++            seed=seed,
++            alpha_w=alpha_w,
++            train_step_scale=train_step_scale,
++            gamma=gamma,
++            k_mc=k_mc,
++            sigma_mu=sigma_mu,
++            sigma_pi=sigma_pi,
++            rho_clip=rho_clip,
++            disable_rho_clip=disable_rho_clip,
+         )
+-        if probe_updates:
+-            log_row.update(probe_updates)
+-        logs.append(log_row)
+-
+-        if log_every > 0 and (n % log_every == 0):
+-            print(
+-                "iter {:03d} | td_loss {:.4f} | teacher_err {:.4f} | gap {:.4f} | rho2 {:.4f} | w_norm {:.3f}".format(
+-                    n, td_loss, critic_teacher_error, tracking_gap, mean_rho2, w_norm
+-                )
+-            )
+-
+-        if checkpoint_every > 0 and (n + 1) % checkpoint_every == 0:
+-            np.savez(
+-                checkpoint_dir / f"iter_{n:04d}.npz",
++        probe_defaults = probe_manager.log_defaults()
++
++        with (output_dir / "config.json").open("w") as handle:
++            json.dump({k: _json_ready(v) for k, v in cfg.items()}, handle, indent=2)
++
++        csv_fieldnames = None
++        csv_writer = None
++        if csv_path.exists():
++            with csv_path.open("r", newline="") as handle:
++                reader = csv.DictReader(handle)
++                csv_fieldnames = reader.fieldnames
++            if csv_fieldnames:
++                csv_handle = csv_path.open("a", newline="")
++                csv_writer = csv.DictWriter(csv_handle, fieldnames=csv_fieldnames)
++
++        seed_max = np.iinfo(np.int32).max
++        last_report_time = time.time()
++
++        for n in range(start_iter, outer_iters):
++            mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu)
++            pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi)
++
++            grad_w = np.zeros_like(w)
++            grad_theta = np.zeros_like(theta_pi)
++            td_errors = []
++            rho_vals = []
++
++            delta_cache = None
++            if probe_manager.enabled and probe_manager.q_kernel_enabled:
++                b_cache = probe_manager.q_kernel_batch_size
++                t_cache = min(probe_manager.q_kernel_max_horizon, horizon)
++                delta_cache = np.full((b_cache, t_cache), np.nan, dtype=float)
++
++            for traj_idx in range(trajectories):
++                env.reset(seed=int(rollout_rng.integers(0, seed_max)))
++                zero_action = np.zeros(2, dtype=float)
++                feat0 = env.compute_features(zero_action)
++                psi = feat0["psi"]
++                for t_idx in range(horizon):
++                    # ---- sample action from behavior policy mu ----
++                    a = mu_policy.sample_action(psi, rollout_rng)
++                    a = _clip_action(a, env.v_max)  # keep consistent with env._clip_action
++
++                    # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
++                    logp_pi = pi_policy.log_prob(a, psi)
++                    logp_mu = mu_policy.log_prob(a, psi)
++                    rho_raw = float(np.exp(logp_pi - logp_mu))
++                    rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
++
++                    # ---- step env (reward + phi are consistent via info["phi"]) ----
++                    obs, reward, terminated, truncated, info = env.step(a)
++
++                    phi = info["phi"]  # phi(s_t, a_t) used for reward + TD
++                    psi_next = info["psi_next"]  # psi(s_{t+1})
++
++                    # ---- compute bar_phi(s_{t+1}) = E_{a'~pi}[phi(s_{t+1},a')] ----
++                    bar_phi = _mc_bar_phi(env, pi_policy, psi_next, rollout_rng, k_mc=k_mc)
++
++                    # ---- TD error ----
++                    q_sa = critic_value(w, phi)
++                    q_next = critic_value(w, bar_phi)
++                    delta = float(reward + gamma * q_next - q_sa)
++
++                    # ---- actor score grad (target policy) ----
++                    g = pi_policy.score(a, psi)  # grad_theta log pi(a|s)
++
++                    # ---- accumulate gradients ----
++                    grad_w += rho * delta * phi
++                    grad_theta += rho * delta * g
++
++                    td_errors.append(delta)
++                    rho_vals.append(rho)
++                    if delta_cache is not None and traj_idx < delta_cache.shape[0] and t_idx < delta_cache.shape[1]:
++                        delta_cache[traj_idx, t_idx] = delta
++
++                    # advance
++                    psi = psi_next
++                    if terminated or truncated:
++                        break
++
++            scale = 1.0 / total_steps
++            w = w + alpha_w * scale * grad_w
++            theta_pi = theta_pi + alpha_pi * scale * grad_theta
++            theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
++
++            theta_pi = project_to_ball(theta_pi, theta_radius)
++            theta_mu = project_to_ball(theta_mu, theta_radius)
++
++            td_loss = float(np.mean(np.square(td_errors))) if td_errors else float("nan")
++            if rho_vals:
++                rho_arr = np.asarray(rho_vals, dtype=float)
++                rho2_arr = rho_arr * rho_arr
++                mean_rho = float(np.mean(rho_arr))
++                mean_rho2 = float(np.mean(rho2_arr))
++                min_rho = float(np.min(rho_arr))
++                max_rho = float(np.max(rho_arr))
++                p95_rho = float(np.quantile(rho_arr, 0.95))
++                p99_rho = float(np.quantile(rho_arr, 0.99))
++                p95_rho2 = float(np.quantile(rho2_arr, 0.95))
++                p99_rho2 = float(np.quantile(rho2_arr, 0.99))
++                max_rho2 = float(np.max(rho2_arr))
++            else:
++                mean_rho = float("nan")
++                mean_rho2 = float("nan")
++                min_rho = float("nan")
++                max_rho = float("nan")
++                p95_rho = float("nan")
++                p99_rho = float("nan")
++                p95_rho2 = float("nan")
++                p99_rho2 = float("nan")
++                max_rho2 = float("nan")
++
++            if td_errors:
++                delta_arr = np.asarray(td_errors, dtype=float)
++                delta_mean = float(np.mean(delta_arr))
++                delta_std = float(np.std(delta_arr))
++                delta_p95 = float(np.quantile(delta_arr, 0.95))
++                delta_p99 = float(np.quantile(delta_arr, 0.99))
++                delta_max = float(np.max(delta_arr))
++            else:
++                delta_mean = float("nan")
++                delta_std = float("nan")
++                delta_p95 = float("nan")
++                delta_p99 = float("nan")
++                delta_max = float("nan")
++            critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
++            tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
++            w_norm = float(np.linalg.norm(w))
++
++            log_row = {
++                "iter": n,
++                "td_loss": td_loss,
++                "critic_teacher_error": critic_teacher_error,
++                "tracking_gap": tracking_gap,
++                "mean_rho": mean_rho,
++                "mean_rho2": mean_rho2,
++                "min_rho": min_rho,
++                "max_rho": max_rho,
++                "p95_rho": p95_rho,
++                "p99_rho": p99_rho,
++                "p95_rho2": p95_rho2,
++                "p99_rho2": p99_rho2,
++                "max_rho2": max_rho2,
++                "delta_mean": delta_mean,
++                "delta_std": delta_std,
++                "delta_p95": delta_p95,
++                "delta_p99": delta_p99,
++                "delta_max": delta_max,
++                "w_norm": w_norm,
++                **probe_defaults,
++            }
++            probe_updates = probe_manager.maybe_run(
++                iteration=n,
++                td_loss=td_loss,
++                w=w,
+                 theta_mu=theta_mu,
+                 theta_pi=theta_pi,
+-                w=w,
+-                iter=n,
++                delta_cache=delta_cache,
+             )
++            if probe_updates:
++                log_row.update(probe_updates)
++            logs.append(log_row)
++            if csv_writer is None:
++                csv_fieldnames = list(log_row.keys())
++                csv_handle = csv_path.open("w", newline="")
++                csv_writer = csv.DictWriter(csv_handle, fieldnames=csv_fieldnames)
++                csv_writer.writeheader()
++            csv_writer.writerow(log_row)
++            csv_handle.flush()
++
++            if log_every > 0 and (n % log_every == 0):
++                print(
++                    "iter {:03d} | td_loss {:.4f} | teacher_err {:.4f} | gap {:.4f} | rho2 {:.4f} | w_norm {:.3f}".format(
++                        n, td_loss, critic_teacher_error, tracking_gap, mean_rho2, w_norm
++                    )
++                )
+ 
+-    csv_path = output_dir / "learning_curves.csv"
+-    with csv_path.open("w", newline="") as handle:
+-        fieldnames = list(logs[0].keys()) if logs else []
+-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+-        writer.writeheader()
+-        for row in logs:
+-            writer.writerow(row)
+-
+-    np.savez(
+-        checkpoint_dir / "final.npz",
+-        theta_mu=theta_mu,
+-        theta_pi=theta_pi,
+-        w=w,
+-        iter=outer_iters - 1,
+-    )
+-
+-    return {"output_dir": str(output_dir), "csv_path": str(csv_path), "logs": logs}
++            if checkpoint_every > 0 and (n + 1) % checkpoint_every == 0:
++                payload = {"theta_mu": theta_mu, "theta_pi": theta_pi, "w": w, "iter": n}
++                _save_checkpoint(checkpoint_dir / f"iter_{n:04d}.npz", **payload)
++                _save_checkpoint(checkpoint_dir / "latest.pt", **payload)
++
++            should_report = False
++            if report_every > 0 and (n + 1) % report_every == 0:
++                should_report = True
++            if report_every_seconds > 0 and (time.time() - last_report_time) >= report_every_seconds:
++                should_report = True
++            if should_report:
++                try:
++                    generate_run_report(
++                        run_dir=output_dir,
++                        config=cfg,
++                        curves_csv=csv_path,
++                        probes_dir=output_dir / "probes",
++                        stdout_log_path=output_dir / "stdout.log",
++                        incomplete=True,
++                        exception=None,
++                    )
++                    last_report_time = time.time()
++                except Exception:
++                    print("Failed to generate periodic run report.")
++                    traceback.print_exc()
++
++        payload = {"theta_mu": theta_mu, "theta_pi": theta_pi, "w": w, "iter": outer_iters - 1}
++        _save_checkpoint(checkpoint_dir / "final.npz", **payload)
++        _save_checkpoint(checkpoint_dir / "latest.pt", **payload)
++
++        if csv_handle is not None:
++            csv_handle.close()
++
++        return {"output_dir": str(output_dir), "csv_path": str(csv_path), "logs": logs}
++    except Exception:
++        exception = traceback.format_exc()
++        raise
++    finally:
++        try:
++            generate_run_report(
++                run_dir=output_dir,
++                config=cfg,
++                curves_csv=csv_path,
++                probes_dir=output_dir / "probes",
++                stdout_log_path=output_dir / "stdout.log",
++                incomplete=exception is not None,
++                exception=exception,
++            )
++        except Exception:
++            print("Failed to generate run report.")
++            traceback.print_exc()
++        finally:
++            if csv_handle is not None:
++                csv_handle.close()
+diff --git a/tdrl_unfixed_ac/algos/unfixed_ac.py b/tdrl_unfixed_ac/algos/unfixed_ac.py
+index 45e32a3..4e08ff2 100644
+--- a/tdrl_unfixed_ac/algos/unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/unfixed_ac.py
+@@ -61,6 +61,21 @@ def importance_ratio(logpi: float, logmu: float) -> float:
+     return float(np.exp(logpi - logmu))
+ 
+ 
++def apply_rho_clip(rho: float, rho_clip: Optional[float], *, disable: bool = False) -> float:
++    """Optionally clip rho to an upper bound."""
++    if disable:
++        return float(rho)
++    if rho_clip is None:
++        return float(rho)
++    try:
++        rho_clip_val = float(rho_clip)
++    except (TypeError, ValueError):
++        return float(rho)
++    if rho_clip_val <= 0.0:
++        return float(rho)
++    return float(min(rho, rho_clip_val))
++
++
+ def critic_value(w: np.ndarray, phi: np.ndarray) -> float:
+     """Compute Q_w(s,a) = (w @ phi)/sqrt(N)."""
+     w = np.asarray(w, dtype=float).reshape(-1)
+diff --git a/tdrl_unfixed_ac/probes/common.py b/tdrl_unfixed_ac/probes/common.py
+index bdeebab..6943fdd 100644
+--- a/tdrl_unfixed_ac/probes/common.py
++++ b/tdrl_unfixed_ac/probes/common.py
+@@ -2,11 +2,11 @@
+ 
+ from __future__ import annotations
+ 
+-from typing import Dict
++from typing import Dict, Optional
+ 
+ import numpy as np
+ 
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
++from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_clip
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+ 
+ 
+@@ -43,6 +43,8 @@ def collect_critic_batch(
+     rng: np.random.Generator,
+     batch_size: int,
+     k_mc: int,
++    rho_clip: Optional[float] = None,
++    disable_rho_clip: bool = False,
+ ) -> Dict[str, np.ndarray]:
+     """Collect a batch of critic transitions under behavior policy mu."""
+     zero_action = np.zeros(2, dtype=float)
+@@ -64,7 +66,8 @@ def collect_critic_batch(
+ 
+         logp_pi = pi_policy.log_prob(a, psi)
+         logp_mu = mu_policy.log_prob(a, psi)
+-        rho = float(np.exp(logp_pi - logp_mu))
++        rho_raw = float(np.exp(logp_pi - logp_mu))
++        rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
+ 
+         obs, reward, terminated, truncated, info = env.step(a)
+ 
+@@ -92,3 +95,34 @@ def collect_critic_batch(
+         "rho": np.asarray(rhos, dtype=float),
+         "reward": np.asarray(rewards, dtype=float),
+     }
++
++
++def summarize_rho(rho: np.ndarray) -> Dict[str, float]:
++    rho_arr = np.asarray(rho, dtype=float)
++    if rho_arr.size == 0 or not np.isfinite(rho_arr).any():
++        return {
++            "rho_mean": float("nan"),
++            "rho2_mean": float("nan"),
++            "rho_min": float("nan"),
++            "rho_max": float("nan"),
++            "rho_p95": float("nan"),
++            "rho_p99": float("nan"),
++        }
++    rho_arr = rho_arr[np.isfinite(rho_arr)]
++    rho2_arr = rho_arr * rho_arr
++    return {
++        "rho_mean": float(np.mean(rho_arr)),
++        "rho2_mean": float(np.mean(rho2_arr)),
++        "rho_min": float(np.min(rho_arr)),
++        "rho_max": float(np.max(rho_arr)),
++        "rho_p95": float(np.quantile(rho_arr, 0.95)),
++        "rho_p99": float(np.quantile(rho_arr, 0.99)),
++    }
++
++
++def rho_clip_metadata(rho_clip: Optional[float], disable_rho_clip: bool) -> Dict[str, float]:
++    active = rho_clip is not None and float(rho_clip) > 0.0 and not disable_rho_clip
++    return {
++        "rho_clip": float(rho_clip) if rho_clip is not None else float("nan"),
++        "rho_clip_active": 1.0 if active else 0.0,
++    }
+diff --git a/tdrl_unfixed_ac/probes/distribution_probe.py b/tdrl_unfixed_ac/probes/distribution_probe.py
+index 7ec7e36..5f4e0d8 100644
+--- a/tdrl_unfixed_ac/probes/distribution_probe.py
++++ b/tdrl_unfixed_ac/probes/distribution_probe.py
+@@ -6,35 +6,135 @@ from typing import Any, Dict, Optional, Tuple
+ 
+ import numpy as np
+ 
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
++from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_clip
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import clip_action
++from tdrl_unfixed_ac.probes.common import clip_action, rho_clip_metadata, summarize_rho
+ 
+ 
+-def _collect_obs_vectors(
++def _collect_state_features(
+     env: TorusGobletGhostEnv,
+     policy: LinearGaussianPolicy,
+     rng: np.random.Generator,
+     num_samples: int,
+-) -> np.ndarray:
++) -> Tuple[np.ndarray, np.ndarray]:
+     action_dim = int(policy.action_dim)
+     zero_action = np.zeros(action_dim, dtype=float)
+     seed_max = np.iinfo(np.int32).max
+ 
+     env.reset(seed=int(rng.integers(0, seed_max)))
+     obs_vecs = []
++    psi_vecs = []
+     for _ in range(num_samples):
+         features = env.compute_features(zero_action)
+         obs_vecs.append(features["obs_vec"])
+ 
+         psi = features["psi"]
++        psi_vecs.append(psi)
+         action = policy.sample_action(psi, rng)
+         action = clip_action(action, env.v_max)
+         _, _, terminated, truncated, _ = env.step(action)
+         if terminated or truncated:
+             raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+ 
+-    return np.stack(obs_vecs, axis=0)
++    return np.stack(obs_vecs, axis=0), np.stack(psi_vecs, axis=0)
++
++
++def _collect_rho_samples(
++    env: TorusGobletGhostEnv,
++    mu_policy: LinearGaussianPolicy,
++    pi_policy: LinearGaussianPolicy,
++    rng: np.random.Generator,
++    num_samples: int,
++    *,
++    rho_clip: Optional[float],
++    disable_rho_clip: bool,
++) -> np.ndarray:
++    action_dim = int(mu_policy.action_dim)
++    zero_action = np.zeros(action_dim, dtype=float)
++    seed_max = np.iinfo(np.int32).max
++
++    env.reset(seed=int(rng.integers(0, seed_max)))
++    feat0 = env.compute_features(zero_action)
++    psi = feat0["psi"]
++
++    rhos = []
++    for _ in range(num_samples):
++        action = mu_policy.sample_action(psi, rng)
++        action = clip_action(action, env.v_max)
++        logp_pi = pi_policy.log_prob(action, psi)
++        logp_mu = mu_policy.log_prob(action, psi)
++        rho_raw = float(np.exp(logp_pi - logp_mu))
++        rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
++        rhos.append(rho)
++
++        _, _, terminated, truncated, info = env.step(action)
++        psi = info["psi_next"]
++        if terminated or truncated:
++            env.reset(seed=int(rng.integers(0, seed_max)))
++            feat0 = env.compute_features(zero_action)
++            psi = feat0["psi"]
++
++    return np.asarray(rhos, dtype=float)
++
++
++def _policy_mean_batch(theta: np.ndarray, psi_batch: np.ndarray) -> np.ndarray:
++    theta = np.asarray(theta, dtype=float)
++    psi_batch = np.asarray(psi_batch, dtype=float)
++    scale = np.sqrt(theta.shape[0])
++    return (psi_batch @ theta) / scale
++
++
++def _gaussian_kl_isotropic(
++    mean_p: np.ndarray,
++    sigma_p: float,
++    mean_q: np.ndarray,
++    sigma_q: float,
++) -> np.ndarray:
++    mean_p = np.asarray(mean_p, dtype=float)
++    mean_q = np.asarray(mean_q, dtype=float)
++    var_p = float(sigma_p) ** 2
++    var_q = float(sigma_q) ** 2
++    diff = mean_q - mean_p
++    diff_norm_sq = np.sum(diff * diff, axis=-1)
++    dim = mean_p.shape[-1]
++    log_ratio = np.log(var_q / var_p)
++    return 0.5 * (dim * (var_p / var_q) + diff_norm_sq / var_q - dim + dim * log_ratio)
++
++
++def _estimate_action_tv(
++    mean_pi: np.ndarray,
++    sigma_pi: float,
++    mean_mu: np.ndarray,
++    sigma_mu: float,
++    rng: np.random.Generator,
++    num_action_samples: int,
++    *,
++    clip_log_ratio: float = 50.0,
++) -> float:
++    if num_action_samples <= 0:
++        return float("nan")
++    mean_pi = np.asarray(mean_pi, dtype=float)
++    mean_mu = np.asarray(mean_mu, dtype=float)
++    num_states, action_dim = mean_pi.shape
++    if num_states == 0:
++        return float("nan")
++    actions = rng.normal(
++        loc=mean_pi[:, None, :],
++        scale=float(sigma_pi),
++        size=(num_states, num_action_samples, action_dim),
++    )
++    var_pi = float(sigma_pi) ** 2
++    var_mu = float(sigma_mu) ** 2
++    log_norm_pi = -0.5 * action_dim * np.log(2.0 * np.pi * var_pi)
++    log_norm_mu = -0.5 * action_dim * np.log(2.0 * np.pi * var_mu)
++    diff_pi = actions - mean_pi[:, None, :]
++    diff_mu = actions - mean_mu[:, None, :]
++    logp_pi = log_norm_pi - 0.5 * np.sum(diff_pi * diff_pi, axis=-1) / var_pi
++    logp_mu = log_norm_mu - 0.5 * np.sum(diff_mu * diff_mu, axis=-1) / var_mu
++    log_ratio = np.clip(logp_mu - logp_pi, -clip_log_ratio, clip_log_ratio)
++    ratio = np.exp(log_ratio)
++    tv_per_state = 0.5 * np.mean(np.abs(1.0 - ratio), axis=-1)
++    return float(np.mean(tv_per_state))
+ 
+ 
+ def _median_bandwidth(x: np.ndarray, max_samples: int, rng: np.random.Generator) -> float:
+@@ -75,27 +175,61 @@ def run_distribution_probe(
+     sigma_pi: float,
+     num_samples: int,
+     seed: Optional[int],
++    action_samples: int = 64,
++    rho_clip: Optional[float] = None,
++    disable_rho_clip: bool = False,
+ ) -> Dict[str, Any]:
+-    """Compare visitation distributions using MMD over observation vectors."""
++    """Compare visitation distributions using MMD and action divergence."""
+     base_seed = int(seed) if seed is not None else 0
+     rng_mu = np.random.default_rng(base_seed + 1)
+     rng_pi = np.random.default_rng(base_seed + 2)
+ 
+     env_mu = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 11))
+     env_pi = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 13))
++    env_rho = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 17))
+ 
+     mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+     pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
+ 
+-    obs_mu = _collect_obs_vectors(env_mu, mu_policy, rng_mu, num_samples)
+-    obs_pi = _collect_obs_vectors(env_pi, pi_policy, rng_pi, num_samples)
++    obs_mu, psi_mu = _collect_state_features(env_mu, mu_policy, rng_mu, num_samples)
++    obs_pi, psi_pi = _collect_state_features(env_pi, pi_policy, rng_pi, num_samples)
+ 
+     mmd2, sigma = _mmd_rbf(obs_mu, obs_pi, rng_mu)
+     mean_l2 = float(np.linalg.norm(obs_mu.mean(axis=0) - obs_pi.mean(axis=0)))
+ 
++    psi_samples = np.concatenate([psi_mu, psi_pi], axis=0)
++    mean_pi = _policy_mean_batch(theta_pi, psi_samples)
++    mean_mu = _policy_mean_batch(theta_mu, psi_samples)
++    kl_vals = _gaussian_kl_isotropic(mean_pi, sigma_pi, mean_mu, sigma_mu)
++    dist_action_kl = float(np.mean(kl_vals)) if kl_vals.size > 0 else float("nan")
++    dist_action_tv = _estimate_action_tv(
++        mean_pi,
++        sigma_pi,
++        mean_mu,
++        sigma_mu,
++        rng_pi,
++        int(action_samples),
++    )
++    rho_samples = _collect_rho_samples(
++        env_rho,
++        mu_policy,
++        pi_policy,
++        rng_mu,
++        num_samples,
++        rho_clip=rho_clip,
++        disable_rho_clip=disable_rho_clip,
++    )
++    rho_stats = summarize_rho(rho_samples)
++    rho_meta = rho_clip_metadata(rho_clip, disable_rho_clip)
++
+     return {
+         "mmd2": float(mmd2),
+         "mmd_sigma": float(sigma),
+         "mean_l2": float(mean_l2),
+         "num_samples": int(num_samples),
++        "dist_action_kl": float(dist_action_kl),
++        "dist_action_tv": float(dist_action_tv),
++        "action_samples": int(action_samples),
++        **rho_stats,
++        **rho_meta,
+     }
+diff --git a/tdrl_unfixed_ac/probes/fixed_point_probe.py b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+index 0d7771c..c3ea4c3 100644
+--- a/tdrl_unfixed_ac/probes/fixed_point_probe.py
++++ b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+@@ -8,7 +8,7 @@ import numpy as np
+ 
+ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import collect_critic_batch
++from tdrl_unfixed_ac.probes.common import collect_critic_batch, rho_clip_metadata, summarize_rho
+ 
+ 
+ def run_fixed_point_probe(
+@@ -25,6 +25,8 @@ def run_fixed_point_probe(
+     batch_size: int,
+     max_iters: int,
+     tol: float,
++    rho_clip: Optional[float],
++    disable_rho_clip: bool,
+     seed: Optional[int],
+ ) -> Dict[str, Any]:
+     """Estimate the TD fixed point w_sharp for frozen (mu, pi)."""
+@@ -34,7 +36,18 @@ def run_fixed_point_probe(
+     mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+     pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
+ 
+-    batch = collect_critic_batch(env, mu_policy, pi_policy, rng, batch_size, k_mc)
++    batch = collect_critic_batch(
++        env,
++        mu_policy,
++        pi_policy,
++        rng,
++        batch_size,
++        k_mc,
++        rho_clip=rho_clip,
++        disable_rho_clip=disable_rho_clip,
++    )
++    rho_stats = summarize_rho(batch["rho"])
++    rho_meta = rho_clip_metadata(rho_clip, disable_rho_clip)
+ 
+     w = np.array(w_init, copy=True)
+     feature_dim = w.shape[0]
+@@ -60,4 +73,6 @@ def run_fixed_point_probe(
+         "num_iters": steps,
+         "batch_size": int(batch_size),
+         "tol": float(tol),
++        **rho_stats,
++        **rho_meta,
+     }
+diff --git a/tdrl_unfixed_ac/probes/manager.py b/tdrl_unfixed_ac/probes/manager.py
+index 5661d6d..3bc5692 100644
+--- a/tdrl_unfixed_ac/probes/manager.py
++++ b/tdrl_unfixed_ac/probes/manager.py
+@@ -12,7 +12,9 @@ import numpy as np
+ 
+ from tdrl_unfixed_ac.probes.distribution_probe import run_distribution_probe
+ from tdrl_unfixed_ac.probes.fixed_point_probe import run_fixed_point_probe
++from tdrl_unfixed_ac.probes.q_kernel_probe import run_q_kernel_probe
+ from tdrl_unfixed_ac.probes.stability_probe import run_stability_probe
++from tdrl_unfixed_ac.utils.seeding import save_restore_rng_state
+ 
+ 
+ class ProbeManager:
+@@ -26,10 +28,13 @@ class ProbeManager:
+         env_config: Dict[str, Any],
+         seed: Optional[int],
+         alpha_w: float,
++        train_step_scale: float,
+         gamma: float,
+         k_mc: int,
+         sigma_mu: float,
+         sigma_pi: float,
++        rho_clip: Optional[float],
++        disable_rho_clip: bool,
+     ) -> None:
+         cfg = config or {}
+         self.enabled = bool(cfg.get("enabled", False))
+@@ -48,14 +53,21 @@ class ProbeManager:
+         self.stability_enabled = bool(self.stability_cfg.get("enabled", True))
+         self.dist_cfg = deepcopy(cfg.get("distribution", {}))
+         self.dist_enabled = bool(self.dist_cfg.get("enabled", True))
++        self.q_kernel_cfg = deepcopy(cfg.get("q_kernel", {}))
++        self.q_kernel_enabled = bool(self.q_kernel_cfg.get("enabled", False))
++        self.q_kernel_batch_size = int(self.q_kernel_cfg.get("batch_size", 8))
++        self.q_kernel_max_horizon = int(self.q_kernel_cfg.get("max_horizon", 200))
+ 
+         self.env_config = deepcopy(env_config)
+         self.seed = seed
+         self.alpha_w = float(alpha_w)
++        self.train_step_scale = float(train_step_scale)
+         self.gamma = float(gamma)
+         self.k_mc = int(k_mc)
+         self.sigma_mu = float(sigma_mu)
+         self.sigma_pi = float(sigma_pi)
++        self.rho_clip = rho_clip
++        self.disable_rho_clip = bool(disable_rho_clip)
+ 
+         self.output_dir = Path(output_dir) / "probes"
+         if self.enabled:
+@@ -73,11 +85,18 @@ class ProbeManager:
+         if self.fixed_enabled:
+             defaults["fixed_point_gap"] = float("nan")
+             defaults["fixed_point_drift"] = float("nan")
++            defaults["fixed_point_drift_defined"] = 0.0
+         if self.stability_enabled:
+             defaults["stability_proxy"] = float("nan")
+         if self.dist_enabled:
+             defaults["dist_mmd2"] = float("nan")
+             defaults["dist_mean_l2"] = float("nan")
++            defaults["dist_action_kl"] = float("nan")
++            defaults["dist_action_tv"] = float("nan")
++        if self.q_kernel_enabled:
++            defaults["td_loss_from_Q"] = float("nan")
++            defaults["td_loss_from_Q_abs_diff"] = float("nan")
++            defaults["td_loss_from_Q_rel_diff"] = float("nan")
+         return defaults
+ 
+     def maybe_run(
+@@ -88,6 +107,7 @@ class ProbeManager:
+         w: np.ndarray,
+         theta_mu: np.ndarray,
+         theta_pi: np.ndarray,
++        delta_cache: Optional[np.ndarray] = None,
+     ) -> Dict[str, float]:
+         if not self.enabled:
+             return {}
+@@ -103,114 +123,169 @@ class ProbeManager:
+         self._last_probe_iter = iteration
+         results: Dict[str, float] = {}
+ 
+-        if self.fixed_enabled:
+-            fixed_cfg = self._with_defaults(
+-                self.fixed_cfg,
+-                {
+-                    "batch_size": 4096,
+-                    "max_iters": 200,
+-                    "tol": 1e-4,
+-                    "alpha_w": self.alpha_w,
+-                    "gamma": self.gamma,
+-                    "k_mc": self.k_mc,
+-                },
+-            )
+-            fixed_out = run_fixed_point_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                w_init=w,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                alpha_w=float(fixed_cfg["alpha_w"]),
+-                gamma=float(fixed_cfg["gamma"]),
+-                k_mc=int(fixed_cfg["k_mc"]),
+-                batch_size=int(fixed_cfg["batch_size"]),
+-                max_iters=int(fixed_cfg["max_iters"]),
+-                tol=float(fixed_cfg["tol"]),
+-                seed=self._seed_for(iteration, 1),
+-            )
+-            w_sharp = fixed_out["w_sharp"]
+-            gap = float(np.linalg.norm(w - w_sharp))
+-            drift = (
+-                float(np.linalg.norm(w_sharp - self._prev_w_sharp))
+-                if self._prev_w_sharp is not None
+-                else float("nan")
+-            )
+-            self._prev_w_sharp = np.array(w_sharp, copy=True)
+-            results["fixed_point_gap"] = gap
+-            results["fixed_point_drift"] = drift
+-            self._append_probe(
+-                "fixed_point_probe",
+-                {
+-                    "iter": iteration,
+-                    "w_gap": gap,
+-                    "w_sharp_drift": drift,
+-                    "converged": fixed_out["converged"],
+-                    "num_iters": fixed_out["num_iters"],
+-                    "batch_size": fixed_out["batch_size"],
+-                    "tol": fixed_out["tol"],
+-                },
+-            )
++        with save_restore_rng_state():
++            if self.fixed_enabled:
++                fixed_cfg = self._with_defaults(
++                    self.fixed_cfg,
++                    {
++                        "batch_size": 4096,
++                        "max_iters": 200,
++                        "tol": 1e-4,
++                        "alpha_w": self.alpha_w,
++                        "gamma": self.gamma,
++                        "k_mc": self.k_mc,
++                    },
++                )
++                fixed_out = run_fixed_point_probe(
++                    env_config=self.env_config,
++                    theta_mu=theta_mu,
++                    theta_pi=theta_pi,
++                    w_init=w,
++                    sigma_mu=self.sigma_mu,
++                    sigma_pi=self.sigma_pi,
++                    alpha_w=float(fixed_cfg["alpha_w"]),
++                    gamma=float(fixed_cfg["gamma"]),
++                    k_mc=int(fixed_cfg["k_mc"]),
++                    batch_size=int(fixed_cfg["batch_size"]),
++                    max_iters=int(fixed_cfg["max_iters"]),
++                    tol=float(fixed_cfg["tol"]),
++                    rho_clip=self.rho_clip,
++                    disable_rho_clip=self.disable_rho_clip,
++                    seed=self._seed_for(iteration, 1),
++                )
++                w_sharp = fixed_out["w_sharp"]
++                gap = float(np.linalg.norm(w - w_sharp))
++                if self._prev_w_sharp is not None:
++                    drift = float(np.linalg.norm(w_sharp - self._prev_w_sharp))
++                    drift_defined = 1.0
++                else:
++                    drift = 0.0
++                    drift_defined = 0.0
++                self._prev_w_sharp = np.array(w_sharp, copy=True)
++                results["fixed_point_gap"] = gap
++                results["fixed_point_drift"] = drift
++                results["fixed_point_drift_defined"] = drift_defined
++                self._append_probe(
++                    "fixed_point_probe",
++                    {
++                        "iter": iteration,
++                        "w_gap": gap,
++                        "w_sharp_drift": drift,
++                        "w_sharp_drift_defined": drift_defined,
++                        "converged": fixed_out["converged"],
++                        "num_iters": fixed_out["num_iters"],
++                        "batch_size": fixed_out["batch_size"],
++                        "tol": fixed_out["tol"],
++                        "rho_mean": fixed_out["rho_mean"],
++                        "rho2_mean": fixed_out["rho2_mean"],
++                        "rho_min": fixed_out["rho_min"],
++                        "rho_max": fixed_out["rho_max"],
++                        "rho_p95": fixed_out["rho_p95"],
++                        "rho_p99": fixed_out["rho_p99"],
++                        "rho_clip": fixed_out["rho_clip"],
++                        "rho_clip_active": fixed_out["rho_clip_active"],
++                    },
++                )
+ 
+-        if self.stability_enabled:
+-            stability_cfg = self._with_defaults(
+-                self.stability_cfg,
+-                {
+-                    "batch_size": 4096,
+-                    "power_iters": 20,
+-                    "alpha_w": self.alpha_w,
+-                    "gamma": self.gamma,
+-                    "k_mc": self.k_mc,
+-                },
+-            )
+-            stability_out = run_stability_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                alpha_w=float(stability_cfg["alpha_w"]),
+-                gamma=float(stability_cfg["gamma"]),
+-                k_mc=int(stability_cfg["k_mc"]),
+-                batch_size=int(stability_cfg["batch_size"]),
+-                power_iters=int(stability_cfg["power_iters"]),
+-                seed=self._seed_for(iteration, 2),
+-            )
+-            results["stability_proxy"] = float(stability_out["stability_proxy"])
+-            self._append_probe(
+-                "stability_probe",
+-                {
+-                    "iter": iteration,
+-                    "stability_proxy": stability_out["stability_proxy"],
+-                    "power_iters": stability_out["power_iters"],
+-                    "batch_size": stability_out["batch_size"],
+-                },
+-            )
++            if self.stability_enabled:
++                stability_cfg = self._with_defaults(
++                    self.stability_cfg,
++                    {
++                        "batch_size": 4096,
++                        "power_iters": 20,
++                        "alpha_w": self.alpha_w,
++                        "gamma": self.gamma,
++                        "k_mc": self.k_mc,
++                    },
++                )
++                stability_out = run_stability_probe(
++                    env_config=self.env_config,
++                    theta_mu=theta_mu,
++                    theta_pi=theta_pi,
++                    sigma_mu=self.sigma_mu,
++                    sigma_pi=self.sigma_pi,
++                    alpha_w=float(stability_cfg["alpha_w"]),
++                    train_step_scale=self.train_step_scale,
++                    gamma=float(stability_cfg["gamma"]),
++                    k_mc=int(stability_cfg["k_mc"]),
++                    batch_size=int(stability_cfg["batch_size"]),
++                    power_iters=int(stability_cfg["power_iters"]),
++                    rho_clip=self.rho_clip,
++                    disable_rho_clip=self.disable_rho_clip,
++                    seed=self._seed_for(iteration, 2),
++                )
++                results["stability_proxy"] = float(stability_out["stability_proxy"])
++                self._append_probe(
++                    "stability_probe",
++                    {
++                        "iter": iteration,
++                        "stability_proxy": stability_out["stability_proxy"],
++                        "stability_proxy_mean": stability_out["stability_proxy_mean"],
++                        "stability_proxy_std": stability_out["stability_proxy_std"],
++                        "power_iters": stability_out["power_iters"],
++                        "batch_size": stability_out["batch_size"],
++                        "stability_probe_step_scale": stability_out["stability_probe_step_scale"],
++                        "rho_mean": stability_out["rho_mean"],
++                        "rho2_mean": stability_out["rho2_mean"],
++                        "rho_min": stability_out["rho_min"],
++                        "rho_max": stability_out["rho_max"],
++                        "rho_p95": stability_out["rho_p95"],
++                        "rho_p99": stability_out["rho_p99"],
++                        "rho_clip": stability_out["rho_clip"],
++                        "rho_clip_active": stability_out["rho_clip_active"],
++                    },
++                )
+ 
+-        if self.dist_enabled:
+-            dist_cfg = self._with_defaults(self.dist_cfg, {"num_samples": 512})
+-            dist_out = run_distribution_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                num_samples=int(dist_cfg["num_samples"]),
+-                seed=self._seed_for(iteration, 3),
+-            )
+-            results["dist_mmd2"] = float(dist_out["mmd2"])
+-            results["dist_mean_l2"] = float(dist_out["mean_l2"])
+-            self._append_probe(
+-                "distribution_probe",
+-                {
+-                    "iter": iteration,
+-                    "mmd2": dist_out["mmd2"],
+-                    "mmd_sigma": dist_out["mmd_sigma"],
+-                    "mean_l2": dist_out["mean_l2"],
+-                    "num_samples": dist_out["num_samples"],
+-                },
+-            )
++            if self.dist_enabled:
++                dist_cfg = self._with_defaults(self.dist_cfg, {"num_samples": 512, "action_samples": 64})
++                dist_out = run_distribution_probe(
++                    env_config=self.env_config,
++                    theta_mu=theta_mu,
++                    theta_pi=theta_pi,
++                    sigma_mu=self.sigma_mu,
++                    sigma_pi=self.sigma_pi,
++                    num_samples=int(dist_cfg["num_samples"]),
++                    action_samples=int(dist_cfg["action_samples"]),
++                    rho_clip=self.rho_clip,
++                    disable_rho_clip=self.disable_rho_clip,
++                    seed=self._seed_for(iteration, 3),
++                )
++                results["dist_mmd2"] = float(dist_out["mmd2"])
++                results["dist_mean_l2"] = float(dist_out["mean_l2"])
++                results["dist_action_kl"] = float(dist_out["dist_action_kl"])
++                results["dist_action_tv"] = float(dist_out["dist_action_tv"])
++                self._append_probe(
++                    "distribution_probe",
++                    {
++                        "iter": iteration,
++                        "mmd2": dist_out["mmd2"],
++                        "mmd_sigma": dist_out["mmd_sigma"],
++                        "mean_l2": dist_out["mean_l2"],
++                        "num_samples": dist_out["num_samples"],
++                        "dist_action_kl": dist_out["dist_action_kl"],
++                        "dist_action_tv": dist_out["dist_action_tv"],
++                        "action_samples": dist_out["action_samples"],
++                        "rho_mean": dist_out["rho_mean"],
++                        "rho2_mean": dist_out["rho2_mean"],
++                        "rho_min": dist_out["rho_min"],
++                        "rho_max": dist_out["rho_max"],
++                        "rho_p95": dist_out["rho_p95"],
++                        "rho_p99": dist_out["rho_p99"],
++                        "rho_clip": dist_out["rho_clip"],
++                        "rho_clip_active": dist_out["rho_clip_active"],
++                    },
++                )
++
++            if self.q_kernel_enabled and delta_cache is not None:
++                q_out = run_q_kernel_probe(
++                    delta_cache=delta_cache,
++                    td_loss=td_loss,
++                    iteration=iteration,
++                )
++                results["td_loss_from_Q"] = float(q_out["td_loss_from_Q"])
++                results["td_loss_from_Q_abs_diff"] = float(q_out["td_loss_from_Q_abs_diff"])
++                results["td_loss_from_Q_rel_diff"] = float(q_out["td_loss_from_Q_rel_diff"])
++                self._append_probe("q_kernel_probe", q_out)
+ 
+         return results
+ 
+diff --git a/tdrl_unfixed_ac/probes/stability_probe.py b/tdrl_unfixed_ac/probes/stability_probe.py
+index d1b0379..228368b 100644
+--- a/tdrl_unfixed_ac/probes/stability_probe.py
++++ b/tdrl_unfixed_ac/probes/stability_probe.py
+@@ -8,7 +8,7 @@ import numpy as np
+ 
+ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import collect_critic_batch
++from tdrl_unfixed_ac.probes.common import collect_critic_batch, rho_clip_metadata, summarize_rho
+ 
+ 
+ def run_stability_probe(
+@@ -19,49 +19,80 @@ def run_stability_probe(
+     sigma_mu: float,
+     sigma_pi: float,
+     alpha_w: float,
++    train_step_scale: float,
+     gamma: float,
+     k_mc: int,
+     batch_size: int,
+     power_iters: int,
++    rho_clip: Optional[float],
++    disable_rho_clip: bool,
+     seed: Optional[int],
+ ) -> Dict[str, Any]:
+     """Estimate local amplification (spectral radius proxy) for critic updates."""
+     rng = np.random.default_rng(seed)
+-    env = TorusGobletGhostEnv(config=env_config, rng=rng)
+-
+     mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+     pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
+ 
+-    batch = collect_critic_batch(env, mu_policy, pi_policy, rng, batch_size, k_mc)
++    def _estimate_proxy(batch: Dict[str, np.ndarray], local_rng: np.random.Generator) -> float:
++        phi = batch["phi"]
++        diff = gamma * batch["bar_phi"] - phi
++        rho = batch["rho"]
++        feature_dim = phi.shape[1]
++
++        v = local_rng.normal(size=feature_dim)
++        v_norm = float(np.linalg.norm(v))
++        if v_norm <= 1e-12:
++            v = np.ones(feature_dim, dtype=float) / np.sqrt(feature_dim)
++        else:
++            v = v / v_norm
+ 
+-    phi = batch["phi"]
+-    diff = gamma * batch["bar_phi"] - phi
+-    rho = batch["rho"]
+-    feature_dim = phi.shape[1]
+-    scale = np.sqrt(feature_dim)
++        spectral = float("nan")
++        for _ in range(int(power_iters)):
++            dot_term = diff @ v
++            update = (rho * dot_term)[:, None] * phi
++            # Align probe step size with training critic updates.
++            v_next = v + train_step_scale * update.sum(axis=0)
++            norm_next = float(np.linalg.norm(v_next))
++            if norm_next <= 1e-12:
++                spectral = 0.0
++                v = v_next
++                break
++            spectral = norm_next
++            v = v_next / norm_next
++        return float(spectral)
+ 
+-    v = rng.normal(size=feature_dim)
+-    v_norm = float(np.linalg.norm(v))
+-    if v_norm <= 1e-12:
+-        v = np.ones(feature_dim, dtype=float) / np.sqrt(feature_dim)
+-    else:
+-        v = v / v_norm
++    reps = max(1, int(k_mc))
++    proxies: list[float] = []
++    rho_samples = []
++    for _ in range(reps):
++        env = TorusGobletGhostEnv(config=env_config, rng=rng)
++        batch = collect_critic_batch(
++            env,
++            mu_policy,
++            pi_policy,
++            rng,
++            batch_size,
++            k_mc,
++            rho_clip=rho_clip,
++            disable_rho_clip=disable_rho_clip,
++        )
++        rho_samples.append(batch["rho"])
++        proxies.append(_estimate_proxy(batch, rng))
+ 
+-    spectral = float("nan")
+-    for _ in range(int(power_iters)):
+-        dot_term = diff @ v
+-        update = (rho * dot_term)[:, None] * phi
+-        v_next = v + (alpha_w / scale) * update.mean(axis=0)
+-        norm_next = float(np.linalg.norm(v_next))
+-        if norm_next <= 1e-12:
+-            spectral = 0.0
+-            v = v_next
+-            break
+-        spectral = norm_next
+-        v = v_next / norm_next
++    proxies_arr = np.asarray(proxies, dtype=float)
++    stability_proxy_mean = float(np.mean(proxies_arr))
++    stability_proxy_std = float(np.std(proxies_arr))
++    rho_all = np.concatenate(rho_samples, axis=0) if rho_samples else np.asarray([], dtype=float)
++    rho_stats = summarize_rho(rho_all)
++    rho_meta = rho_clip_metadata(rho_clip, disable_rho_clip)
+ 
+     return {
+-        "stability_proxy": float(spectral),
++        "stability_proxy": stability_proxy_mean,
++        "stability_proxy_mean": stability_proxy_mean,
++        "stability_proxy_std": stability_proxy_std,
+         "power_iters": int(power_iters),
+         "batch_size": int(batch_size),
++        "stability_probe_step_scale": float(train_step_scale),
++        **rho_stats,
++        **rho_meta,
+     }
+diff --git a/tdrl_unfixed_ac/utils/seeding.py b/tdrl_unfixed_ac/utils/seeding.py
+index b4e7859..fcf08ec 100644
+--- a/tdrl_unfixed_ac/utils/seeding.py
++++ b/tdrl_unfixed_ac/utils/seeding.py
+@@ -2,11 +2,17 @@
+ 
+ from __future__ import annotations
+ 
++from contextlib import contextmanager
+ from dataclasses import dataclass
+-from typing import Optional
++from typing import Generator, Optional
+ 
+ import numpy as np
+ 
++try:  # pragma: no cover - torch is optional
++    import torch  # type: ignore
++except Exception:  # pragma: no cover - optional dependency
++    torch = None
++
+ 
+ @dataclass
+ class Seeder:
+@@ -30,3 +36,22 @@ class Seeder:
+         self.rng = np.random.default_rng(self.seed_sequence)
+         return self.rng
+ 
++
++@contextmanager
++def save_restore_rng_state() -> Generator[None, None, None]:
++    """Save and restore global RNG state for numpy/torch (if available)."""
++    np_state = np.random.get_state()
++    torch_state = None
++    torch_cuda_state = None
++    if torch is not None:
++        torch_state = torch.random.get_rng_state()
++        if torch.cuda.is_available():
++            torch_cuda_state = torch.cuda.get_rng_state_all()
++    try:
++        yield
++    finally:
++        np.random.set_state(np_state)
++        if torch is not None and torch_state is not None:
++            torch.random.set_rng_state(torch_state)
++            if torch_cuda_state is not None:
++                torch.cuda.set_rng_state_all(torch_cuda_state)
+diff --git a/tdrl_unfixed_ac/probes/q_kernel_probe.py b/tdrl_unfixed_ac/probes/q_kernel_probe.py
+new file mode 100644
+index 0000000..478c471
+--- /dev/null
++++ b/tdrl_unfixed_ac/probes/q_kernel_probe.py
+@@ -0,0 +1,60 @@
++"""Q-kernel probe from cached TD errors."""
++
++from __future__ import annotations
++
++from typing import Any, Dict
++
++import numpy as np
++
++
++def run_q_kernel_probe(
++    *,
++    delta_cache: np.ndarray,
++    td_loss: float,
++    iteration: int,
++) -> Dict[str, Any]:
++    """Compute empirical Q_hat from cached TD errors."""
++    delta = np.asarray(delta_cache, dtype=float)
++    if delta.ndim != 2 or delta.size == 0:
++        td_loss_from_q = float("nan")
++        abs_diff = float("nan")
++        rel_diff = float("nan")
++        t_count = 0
++        b_count = int(delta.shape[0]) if delta.ndim >= 1 else 0
++        t_cache = int(delta.shape[1]) if delta.ndim >= 2 else 0
++    else:
++        b_count, t_cache = delta.shape
++        finite_mask = np.isfinite(delta)
++        if np.all(finite_mask):
++            q_hat = (delta.T @ delta) / max(b_count, 1)
++            q_diag = np.diag(q_hat)
++        else:
++            q_diag = np.full(t_cache, np.nan, dtype=float)
++            for t_idx in range(t_cache):
++                vals = delta[:, t_idx]
++                mask = finite_mask[:, t_idx]
++                if np.any(mask):
++                    q_diag[t_idx] = float(np.mean(vals[mask] * vals[mask]))
++        t_mask = np.isfinite(q_diag)
++        t_count = int(np.sum(t_mask))
++        if t_count > 0:
++            td_loss_from_q = 0.5 * float(np.mean(q_diag[t_mask]))
++        else:
++            td_loss_from_q = float("nan")
++        if np.isfinite(td_loss_from_q) and np.isfinite(td_loss):
++            abs_diff = float(abs(td_loss_from_q - td_loss))
++            rel_diff = abs_diff / abs(td_loss) if abs(td_loss) > 0 else float("nan")
++        else:
++            abs_diff = float("nan")
++            rel_diff = float("nan")
++
++    return {
++        "iter": int(iteration),
++        "td_loss": float(td_loss),
++        "td_loss_from_Q": float(td_loss_from_q),
++        "td_loss_from_Q_abs_diff": float(abs_diff),
++        "td_loss_from_Q_rel_diff": float(rel_diff),
++        "cache_batch_size": int(b_count),
++        "cache_horizon": int(t_cache),
++        "cache_valid_t": int(t_count),
++    }
+diff --git a/scripts/test_probes_side_effect_free.py b/scripts/test_probes_side_effect_free.py
+new file mode 100644
+index 0000000..21135a7
+--- /dev/null
++++ b/scripts/test_probes_side_effect_free.py
+@@ -0,0 +1,138 @@
++#!/usr/bin/env python3
++"""Check that probes do not perturb training RNG state."""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import math
++import sys
++from copy import deepcopy
++from pathlib import Path
++from typing import Dict, List, Tuple
++
++import numpy as np
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from tdrl_unfixed_ac.algos.train_unfixed_ac import load_train_config, train_unfixed_ac
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Test probes are side-effect free.")
++    parser.add_argument("--config", type=str, required=True, help="Training config path.")
++    parser.add_argument("--output-root", type=str, required=True, help="Output root directory.")
++    parser.add_argument("--outer-iters", type=int, default=120, help="Number of outer iters to run.")
++    parser.add_argument("--seed", type=int, default=None, help="Override seed.")
++    parser.add_argument("--tol", type=float, default=1e-12, help="Absolute tolerance for matching metrics.")
++    return parser.parse_args()
++
++
++def _load_rows(path: Path) -> List[Dict[str, float]]:
++    if not path.exists():
++        raise FileNotFoundError(f"Missing {path}")
++    rows: List[Dict[str, float]] = []
++    with path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        if reader.fieldnames is None:
++            return rows
++        for row in reader:
++            parsed: Dict[str, float] = {}
++            for field in reader.fieldnames:
++                raw = row.get(field, "")
++                try:
++                    parsed[field] = float(raw)
++                except (TypeError, ValueError):
++                    parsed[field] = math.nan
++            rows.append(parsed)
++    return rows
++
++
++def _probe_iters(probes_dir: Path) -> set[int]:
++    probe_iters: set[int] = set()
++    for path in probes_dir.glob("*_probe.csv"):
++        rows = _load_rows(path)
++        for row in rows:
++            raw_iter = row.get("iter")
++            if raw_iter is None or not math.isfinite(raw_iter):
++                continue
++            probe_iters.add(int(raw_iter))
++    return probe_iters
++
++
++def _compare_rows(
++    rows_a: List[Dict[str, float]],
++    rows_b: List[Dict[str, float]],
++    metrics: List[str],
++    tol: float,
++) -> Tuple[bool, str]:
++    if len(rows_a) != len(rows_b):
++        return False, f"Row count mismatch: {len(rows_a)} vs {len(rows_b)}"
++    for idx, (row_a, row_b) in enumerate(zip(rows_a, rows_b)):
++        iter_a = row_a.get("iter")
++        iter_b = row_b.get("iter")
++        if iter_a != iter_b:
++            return False, f"Iter mismatch at row {idx}: {iter_a} vs {iter_b}"
++        for metric in metrics:
++            val_a = row_a.get(metric, math.nan)
++            val_b = row_b.get(metric, math.nan)
++            if math.isnan(val_a) and math.isnan(val_b):
++                continue
++            if not math.isfinite(val_a) or not math.isfinite(val_b):
++                return False, f"Non-finite {metric} at iter {iter_a}: {val_a} vs {val_b}"
++            if abs(val_a - val_b) > tol:
++                return False, f"{metric} mismatch at iter {iter_a}: {val_a} vs {val_b}"
++    return True, ""
++
++
++def main() -> None:
++    args = parse_args()
++    output_root = Path(args.output_root)
++    if output_root.exists() and any(output_root.iterdir()):
++        raise SystemExit(f"Output root {output_root} is not empty; choose a new directory.")
++
++    cfg = load_train_config(args.config)
++    if args.seed is not None:
++        cfg["seed"] = args.seed
++    cfg["outer_iters"] = int(args.outer_iters)
++
++    probes_on = deepcopy(cfg)
++    probes_on.setdefault("probes", {})["enabled"] = True
++    probes_on["output_dir"] = str(output_root / "probes_on")
++
++    probes_off = deepcopy(cfg)
++    probes_off.setdefault("probes", {})["enabled"] = False
++    probes_off["output_dir"] = str(output_root / "probes_off")
++
++    train_unfixed_ac(probes_on)
++    train_unfixed_ac(probes_off)
++
++    rows_on = _load_rows(Path(probes_on["output_dir"]) / "learning_curves.csv")
++    rows_off = _load_rows(Path(probes_off["output_dir"]) / "learning_curves.csv")
++
++    metrics = ["td_loss", "w_norm", "critic_teacher_error"]
++    ok, message = _compare_rows(rows_on, rows_off, metrics, args.tol)
++    probe_iters = _probe_iters(Path(probes_on["output_dir"]) / "probes")
++    if not ok:
++        if message.startswith("td_loss mismatch") or message.startswith("w_norm mismatch") or message.startswith("critic_teacher_error mismatch"):
++            parts = message.split("iter ")
++            iter_val = None
++            if len(parts) > 1:
++                try:
++                    iter_val = int(float(parts[1].split(":")[0]))
++                except ValueError:
++                    iter_val = None
++            if iter_val is not None:
++                triggered = iter_val in probe_iters
++                print(f"{message}; probe_triggered={triggered}")
++                return
++        print(message)
++        return
++
++    print("Probes side-effect free: metrics match within tolerance.")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/metric_map_stepC.md b/docs/metric_map_stepC.md
+new file mode 100644
+index 0000000..b437bcb
+--- /dev/null
++++ b/docs/metric_map_stepC.md
+@@ -0,0 +1,116 @@
++# Step C metric map
++
++This maps Step C CSV metrics to definitions, code locations, dependencies, and whether they are empirical or theory-aligned.
++
++## Shared definitions
++- Delta(s_t,a_t) = r_t + gamma * Q_w(s_{t+1}, a'~pi) - Q_w(s_t,a_t). Code: `tdrl_unfixed_ac/algos/train_unfixed_ac.py:330`.
++- Q_w(s,a) = (w dot phi(s,a)) / sqrt(d). Code: `tdrl_unfixed_ac/algos/unfixed_ac.py:79`.
++- bar_phi(s_{t+1}) = E_{a'~pi}[phi(s_{t+1},a')] estimated by MC. Code: `tdrl_unfixed_ac/algos/train_unfixed_ac.py:327`.
++- rho = exp(logpi - logmu), computed on clipped actions and optionally clipped by rho_clip. Code: `tdrl_unfixed_ac/algos/train_unfixed_ac.py:315`, `tdrl_unfixed_ac/algos/unfixed_ac.py:64`.
++- td_loss (training) = mean(Delta^2) across all steps (no 1/2 factor). Code: `tdrl_unfixed_ac/algos/train_unfixed_ac.py:360`.
++- Q_hat(t,t') = mean_b Delta_cache[b,t] * Delta_cache[b,t'] from cached TD errors. Code: `tdrl_unfixed_ac/probes/q_kernel_probe.py:26`.
++
++## learning_curves.csv (training loop)
++| Metric | Definition | Code location | Dependencies | Clip/normalize/mask/stopgrad | Empirical vs theory |
++| --- | --- | --- | --- | --- | --- |
++| iter | Outer iteration index n (0-based). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:402` | n | none | empirical (counter) |
++| td_loss | mean(Delta^2) over all sampled steps. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:360` | Delta, gamma, Q_w, phi, bar_phi, reward | no clip; Q_w uses 1/sqrt(d) normalization | empirical (sample average) |
++| critic_teacher_error | (1/d) * ||w - w_teacher||^2. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:397` | w, teacher_w, feature_dim | normalized by feature_dim | deterministic parameter metric |
++| tracking_gap | (1/actor_dim) * ||theta_pi - theta_mu||^2. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:398` | theta_pi, theta_mu, actor_dim | normalized by actor_dim | deterministic parameter metric |
++| w_norm | ||w||_2. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:399` | w | none | deterministic parameter metric |
++| mean_rho | mean(rho) over sampled steps. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:364` | logpi, logmu, rho_clip | action clipped; rho optionally clipped | empirical |
++| mean_rho2 | mean(rho^2). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:365` | rho | rho uses clip | empirical |
++| min_rho | min(rho). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:366` | rho | rho uses clip | empirical |
++| max_rho | max(rho). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:367` | rho | rho uses clip | empirical |
++| p95_rho | 95th percentile of rho. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:368` | rho | rho uses clip | empirical |
++| p99_rho | 99th percentile of rho. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:369` | rho | rho uses clip | empirical |
++| p95_rho2 | 95th percentile of rho^2. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:370` | rho | rho uses clip | empirical |
++| p99_rho2 | 99th percentile of rho^2. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:371` | rho | rho uses clip | empirical |
++| max_rho2 | max(rho^2). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:372` | rho | rho uses clip | empirical |
++| delta_mean | mean(Delta). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:386` | Delta | no clip | empirical |
++| delta_std | std(Delta). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:387` | Delta | no clip | empirical |
++| delta_p95 | 95th percentile of Delta. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:388` | Delta | no clip | empirical |
++| delta_p99 | 99th percentile of Delta. | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:389` | Delta | no clip | empirical |
++| delta_max | max(Delta). | `tdrl_unfixed_ac/algos/train_unfixed_ac.py:390` | Delta | no clip | empirical |
++| fixed_point_gap | ||w - w_sharp|| from fixed-point probe. | `tdrl_unfixed_ac/probes/manager.py:156` | w, w_sharp | none | empirical estimate (probe) |
++| fixed_point_drift | ||w_sharp - w_sharp_prev|| from probe. | `tdrl_unfixed_ac/probes/manager.py:158` | w_sharp | none | empirical estimate (probe) |
++| fixed_point_drift_defined | 1 if drift is defined, else 0. | `tdrl_unfixed_ac/probes/manager.py:159` | prior probe state | none | empirical flag |
++| stability_proxy | mean spectral proxy from stability probe. | `tdrl_unfixed_ac/probes/stability_probe.py:82` | rho, phi, bar_phi, gamma | uses train_step_scale, power_iters | theory proxy (linearized) |
++| dist_mmd2 | MMD^2 between obs features under mu and pi. | `tdrl_unfixed_ac/probes/distribution_probe.py:197` | obs_vec samples | RBF kernel with median bandwidth | empirical |
++| dist_mean_l2 | ||mean(obs_mu) - mean(obs_pi)||_2. | `tdrl_unfixed_ac/probes/distribution_probe.py:198` | obs_vec samples | none | empirical |
++| dist_action_kl | mean KL(N(mu_pi,sigma_pi) || N(mu_mu,sigma_mu)). | `tdrl_unfixed_ac/probes/distribution_probe.py:203` | policy means, sigmas | analytic Gaussian KL | theory-aligned (closed form) |
++| dist_action_tv | sample-based TV distance between actions. | `tdrl_unfixed_ac/probes/distribution_probe.py:205` | sampled actions | log-ratio clipped to +/-50 | empirical |
++| td_loss_from_Q | (1/(2T_cache)) * sum_t Q_hat(t,t). | `tdrl_unfixed_ac/probes/q_kernel_probe.py:41` | Delta_cache | uses finite mask if NaN | empirical estimate of theory Q_hat |
++| td_loss_from_Q_abs_diff | |td_loss_from_Q - td_loss|. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:45` | td_loss, td_loss_from_Q | NaN if td_loss is 0 or non-finite | empirical diagnostic |
++| td_loss_from_Q_rel_diff | abs_diff / |td_loss|. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:46` | td_loss, td_loss_from_Q | NaN if td_loss is 0 or non-finite | empirical diagnostic |
++
++## probes/fixed_point_probe.csv
++| Metric | Definition | Code location | Dependencies | Clip/normalize/mask/stopgrad | Empirical vs theory |
++| --- | --- | --- | --- | --- | --- |
++| iter | Training iteration when probe ran. | `tdrl_unfixed_ac/probes/manager.py:171` | iteration | none | empirical (counter) |
++| w_gap | ||w - w_sharp||. | `tdrl_unfixed_ac/probes/manager.py:157` | w, w_sharp | none | empirical estimate |
++| w_sharp_drift | ||w_sharp - w_sharp_prev||. | `tdrl_unfixed_ac/probes/manager.py:158` | w_sharp | none | empirical estimate |
++| w_sharp_drift_defined | 1 if drift computed, else 0. | `tdrl_unfixed_ac/probes/manager.py:159` | prior probe state | none | empirical flag |
++| converged | 1 if fixed-point iterations converged. | `tdrl_unfixed_ac/probes/fixed_point_probe.py:57` | iterative solver | none | empirical flag |
++| num_iters | Iterations used to converge. | `tdrl_unfixed_ac/probes/fixed_point_probe.py:73` | iterative solver | none | empirical |
++| batch_size | Probe batch size. | `tdrl_unfixed_ac/probes/fixed_point_probe.py:74` | config | none | metadata |
++| tol | Convergence tolerance. | `tdrl_unfixed_ac/probes/fixed_point_probe.py:75` | config | none | metadata |
++| rho_mean | mean(rho) in probe batch. | `tdrl_unfixed_ac/probes/common.py:113` | logpi, logmu, rho_clip | action clipped; rho optionally clipped | empirical |
++| rho2_mean | mean(rho^2) in probe batch. | `tdrl_unfixed_ac/probes/common.py:115` | rho | rho uses clip | empirical |
++| rho_min | min(rho) in probe batch. | `tdrl_unfixed_ac/probes/common.py:116` | rho | rho uses clip | empirical |
++| rho_max | max(rho) in probe batch. | `tdrl_unfixed_ac/probes/common.py:117` | rho | rho uses clip | empirical |
++| rho_p95 | 95th percentile of rho. | `tdrl_unfixed_ac/probes/common.py:118` | rho | rho uses clip | empirical |
++| rho_p99 | 99th percentile of rho. | `tdrl_unfixed_ac/probes/common.py:119` | rho | rho uses clip | empirical |
++| rho_clip | rho clip upper bound (NaN if None). | `tdrl_unfixed_ac/probes/common.py:123` | config | none | metadata |
++| rho_clip_active | 1 if clip active, else 0. | `tdrl_unfixed_ac/probes/common.py:124` | config | none | metadata |
++
++## probes/stability_probe.csv
++| Metric | Definition | Code location | Dependencies | Clip/normalize/mask/stopgrad | Empirical vs theory |
++| --- | --- | --- | --- | --- | --- |
++| iter | Training iteration when probe ran. | `tdrl_unfixed_ac/probes/manager.py:221` | iteration | none | empirical (counter) |
++| stability_proxy | Mean spectral proxy from power iteration. | `tdrl_unfixed_ac/probes/stability_probe.py:82` | rho, phi, bar_phi, gamma | uses train_step_scale, power_iters | theory proxy |
++| stability_proxy_mean | Same as stability_proxy. | `tdrl_unfixed_ac/probes/stability_probe.py:83` | same as above | same as above | theory proxy |
++| stability_proxy_std | Std over k_mc repeats. | `tdrl_unfixed_ac/probes/stability_probe.py:84` | same as above | same as above | empirical |
++| power_iters | Power-iteration steps. | `tdrl_unfixed_ac/probes/stability_probe.py:50` | config | none | metadata |
++| batch_size | Probe batch size. | `tdrl_unfixed_ac/probes/stability_probe.py:94` | config | none | metadata |
++| stability_probe_step_scale | Step scale used in probe. | `tdrl_unfixed_ac/probes/stability_probe.py:95` | alpha_w, trajectories, horizon | none | metadata |
++| rho_mean | mean(rho) in probe batch. | `tdrl_unfixed_ac/probes/common.py:113` | logpi, logmu, rho_clip | action clipped; rho optionally clipped | empirical |
++| rho2_mean | mean(rho^2) in probe batch. | `tdrl_unfixed_ac/probes/common.py:115` | rho | rho uses clip | empirical |
++| rho_min | min(rho) in probe batch. | `tdrl_unfixed_ac/probes/common.py:116` | rho | rho uses clip | empirical |
++| rho_max | max(rho) in probe batch. | `tdrl_unfixed_ac/probes/common.py:117` | rho | rho uses clip | empirical |
++| rho_p95 | 95th percentile of rho. | `tdrl_unfixed_ac/probes/common.py:118` | rho | rho uses clip | empirical |
++| rho_p99 | 99th percentile of rho. | `tdrl_unfixed_ac/probes/common.py:119` | rho | rho uses clip | empirical |
++| rho_clip | rho clip upper bound (NaN if None). | `tdrl_unfixed_ac/probes/common.py:123` | config | none | metadata |
++| rho_clip_active | 1 if clip active, else 0. | `tdrl_unfixed_ac/probes/common.py:124` | config | none | metadata |
++
++## probes/distribution_probe.csv
++| Metric | Definition | Code location | Dependencies | Clip/normalize/mask/stopgrad | Empirical vs theory |
++| --- | --- | --- | --- | --- | --- |
++| iter | Training iteration when probe ran. | `tdrl_unfixed_ac/probes/manager.py:260` | iteration | none | empirical (counter) |
++| mmd2 | MMD^2 between obs under mu/pi. | `tdrl_unfixed_ac/probes/distribution_probe.py:197` | obs_vec samples | RBF kernel with median bandwidth | empirical |
++| mmd_sigma | RBF bandwidth used for MMD. | `tdrl_unfixed_ac/probes/distribution_probe.py:152` | obs_vec samples | median heuristic | empirical |
++| mean_l2 | ||mean(obs_mu) - mean(obs_pi)||_2. | `tdrl_unfixed_ac/probes/distribution_probe.py:198` | obs_vec samples | none | empirical |
++| num_samples | Number of state samples. | `tdrl_unfixed_ac/probes/distribution_probe.py:229` | config | none | metadata |
++| dist_action_kl | mean KL(N(mu_pi,sigma_pi) || N(mu_mu,sigma_mu)). | `tdrl_unfixed_ac/probes/distribution_probe.py:203` | policy means, sigmas | analytic Gaussian KL | theory-aligned |
++| dist_action_tv | sample-based TV distance. | `tdrl_unfixed_ac/probes/distribution_probe.py:205` | sampled actions | log-ratio clipped to +/-50 | empirical |
++| action_samples | Number of action samples per state. | `tdrl_unfixed_ac/probes/distribution_probe.py:232` | config | none | metadata |
++| rho_mean | mean(rho) in rho-sample batch. | `tdrl_unfixed_ac/probes/distribution_probe.py:222` | logpi, logmu, rho_clip | action clipped; rho optionally clipped | empirical |
++| rho2_mean | mean(rho^2) in rho-sample batch. | `tdrl_unfixed_ac/probes/common.py:115` | rho | rho uses clip | empirical |
++| rho_min | min(rho) in rho-sample batch. | `tdrl_unfixed_ac/probes/common.py:116` | rho | rho uses clip | empirical |
++| rho_max | max(rho) in rho-sample batch. | `tdrl_unfixed_ac/probes/common.py:117` | rho | rho uses clip | empirical |
++| rho_p95 | 95th percentile of rho. | `tdrl_unfixed_ac/probes/common.py:118` | rho | rho uses clip | empirical |
++| rho_p99 | 99th percentile of rho. | `tdrl_unfixed_ac/probes/common.py:119` | rho | rho uses clip | empirical |
++| rho_clip | rho clip upper bound (NaN if None). | `tdrl_unfixed_ac/probes/common.py:123` | config | none | metadata |
++| rho_clip_active | 1 if clip active, else 0. | `tdrl_unfixed_ac/probes/common.py:124` | config | none | metadata |
++
++## probes/q_kernel_probe.csv
++| Metric | Definition | Code location | Dependencies | Clip/normalize/mask/stopgrad | Empirical vs theory |
++| --- | --- | --- | --- | --- | --- |
++| iter | Training iteration when probe ran. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:52` | iteration | none | empirical (counter) |
++| td_loss | Logged training td_loss for that iter. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:53` | td_loss | none | empirical |
++| td_loss_from_Q | (1/(2T_cache)) * sum_t Q_hat(t,t). | `tdrl_unfixed_ac/probes/q_kernel_probe.py:41` | Delta_cache | finite-mask if NaN | empirical estimate |
++| td_loss_from_Q_abs_diff | |td_loss_from_Q - td_loss|. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:45` | td_loss, td_loss_from_Q | NaN if td_loss is 0 or non-finite | empirical diagnostic |
++| td_loss_from_Q_rel_diff | abs_diff / |td_loss|. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:46` | td_loss, td_loss_from_Q | NaN if td_loss is 0 or non-finite | empirical diagnostic |
++| cache_batch_size | B_cache used for Delta_cache. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:57` | config | none | metadata |
++| cache_horizon | T_cache used for Delta_cache. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:58` | config | none | metadata |
++| cache_valid_t | Count of finite diag entries in Q_hat. | `tdrl_unfixed_ac/probes/q_kernel_probe.py:59` | Delta_cache | finite-mask | metadata |
+diff --git a/scripts/analyze_step_c.py b/scripts/analyze_step_c.py
+new file mode 100644
+index 0000000..365541a
+--- /dev/null
++++ b/scripts/analyze_step_c.py
+@@ -0,0 +1,989 @@
++#!/usr/bin/env python3
++"""Analyze Step C short runs and generate plots + markdown evidence."""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++from pathlib import Path
++from typing import Dict, List, Optional, Tuple
++
++import numpy as np
++
++try:
++    import matplotlib.pyplot as plt
++except Exception as exc:  # pragma: no cover
++    raise SystemExit("matplotlib is required for plotting") from exc
++
++STABILITY_EPS = 1e-3
++PROBE_WINDOW = 5
++TD_SLOPE_WINDOW = 20
++TD_SLOPE_FLAT_MAX = 1e-6
++TD_FLAT_RANGE_MAX = 1e-6
++TD_INCREASE_MIN = 1e-6
++W_NORM_INCREASE_MIN = 1e-4
++W_GAP_MIN = 1e-3
++SUSTAINED_WINDOW = 5
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Analyze plateau/instability short runs for Step C.")
++    parser.add_argument("--plateau-run", type=str, required=True, help="Plateau run directory")
++    parser.add_argument("--instability-run", type=str, required=True, help="Instability run directory")
++    parser.add_argument("--out-dir", type=str, default=None, help="Output directory for analysis artifacts")
++    parser.add_argument("--last-k", type=int, default=5, help="Last-k window for slope annotations")
++    parser.add_argument(
++        "--diff-files",
++        action="append",
++        default=[],
++        help="Repo diff files to include at top of the report (repeatable).",
++    )
++    parser.add_argument(
++        "--key-paths",
++        action="append",
++        default=[],
++        help="Key output file paths to include at top of the report (repeatable).",
++    )
++    return parser.parse_args()
++
++
++def _load_csv(path: Path) -> Dict[str, List[float]]:
++    data: Dict[str, List[float]] = {}
++    if not path.exists():
++        return data
++    with path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        if reader.fieldnames is None:
++            return data
++        for field in reader.fieldnames:
++            data[field] = []
++        for row in reader:
++            for field in reader.fieldnames:
++                raw = row.get(field, "")
++                try:
++                    val = float(raw)
++                except (TypeError, ValueError):
++                    val = math.nan
++                data[field].append(val)
++    return data
++
++
++def _probe_map(path: Path) -> Dict[int, Dict[str, float]]:
++    data = _load_csv(path)
++    if not data or "iter" not in data:
++        return {}
++    iters = data.get("iter", [])
++    mapping: Dict[int, Dict[str, float]] = {}
++    for idx, raw_iter in enumerate(iters):
++        if not math.isfinite(raw_iter):
++            continue
++        iter_key = int(raw_iter)
++        row = {key: data[key][idx] for key in data.keys()}
++        mapping[iter_key] = row
++    return mapping
++
++
++def _probe_iters(paths: List[Path]) -> List[float]:
++    iters: set[int] = set()
++    for path in paths:
++        data = _load_csv(path)
++        if not data or "iter" not in data:
++            continue
++        for raw_iter in data["iter"]:
++            if math.isfinite(raw_iter):
++                iters.add(int(raw_iter))
++    return sorted(float(x) for x in iters)
++
++
++def _load_config(run_dir: Path) -> Dict[str, object]:
++    path = run_dir / "config.json"
++    if not path.exists():
++        return {}
++    try:
++        return json.loads(path.read_text())
++    except json.JSONDecodeError:
++        return {}
++
++
++def _finite_xy(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
++    if x.size == 0 or y.size == 0:
++        return x[:0], y[:0]
++    mask = np.isfinite(x) & np.isfinite(y)
++    return x[mask], y[mask]
++
++
++def _last_k_slope(x: np.ndarray, y: np.ndarray, k: int) -> float:
++    if y.size < 2:
++        return float("nan")
++    k = max(2, min(int(k), y.size))
++    xk = x[-k:]
++    yk = y[-k:]
++    dx = xk[-1] - xk[0]
++    if dx == 0:
++        return float("nan")
++    return float((yk[-1] - yk[0]) / dx)
++
++
++def _linear_slope(x: np.ndarray, y: np.ndarray) -> float:
++    if x.size < 2 or y.size < 2:
++        return float("nan")
++    mean_x = float(np.mean(x))
++    mean_y = float(np.mean(y))
++    denom = float(np.sum((x - mean_x) ** 2))
++    if denom == 0.0:
++        return 0.0
++    num = float(np.sum((x - mean_x) * (y - mean_y)))
++    return num / denom
++
++
++def _last_k(values: np.ndarray, k: int) -> np.ndarray:
++    if values.size == 0:
++        return values
++    k = max(1, min(int(k), values.size))
++    return values[-k:]
++
++
++def _range_last_k(values: np.ndarray, k: int) -> float:
++    window = _last_k(values, k)
++    if window.size == 0:
++        return float("nan")
++    return float(np.max(window) - np.min(window))
++
++
++def _sustained_increase(values: np.ndarray, window: int, min_increase: float) -> bool:
++    window_vals = _last_k(values, window)
++    if window_vals.size < 2:
++        return False
++    if float(window_vals[-1] - window_vals[0]) <= min_increase:
++        return False
++    return bool(np.all(window_vals[1:] > window_vals[:-1]))
++
++
++def _find_sustained_windows(
++    x: np.ndarray, y: np.ndarray, threshold: float, window: int
++) -> List[Tuple[float, float]]:
++    if y.size == 0:
++        return []
++    windows: List[Tuple[float, float]] = []
++    start_idx: Optional[int] = None
++    for idx, val in enumerate(y):
++        if val > threshold:
++            if start_idx is None:
++                start_idx = idx
++        else:
++            if start_idx is not None and idx - start_idx >= window:
++                windows.append((float(x[start_idx]), float(x[idx - 1])))
++            start_idx = None
++    if start_idx is not None and y.size - start_idx >= window:
++        windows.append((float(x[start_idx]), float(x[-1])))
++    return windows
++
++
++def _series_stats(x: np.ndarray, y: np.ndarray, last_k: int) -> Dict[str, float]:
++    x_f, y_f = _finite_xy(x, y)
++    if y_f.size == 0:
++        return {"count": 0.0, "last": math.nan, "min": math.nan, "max": math.nan, "slope": math.nan}
++    return {
++        "count": float(y_f.size),
++        "last": float(y_f[-1]),
++        "min": float(np.min(y_f)),
++        "max": float(np.max(y_f)),
++        "slope": _last_k_slope(x_f, y_f, last_k),
++    }
++
++
++def _fmt(val: float) -> str:
++    if not isinstance(val, (int, float)) or not math.isfinite(float(val)):
++        return "-"
++    return f"{val:.4g}"
++
++
++def _annotation_text(
++    series_stats: Dict[str, Dict[str, float]],
++    *,
++    last_k: int,
++    probe_points: Optional[int] = None,
++    outer_iters: Optional[int] = None,
++) -> str:
++    lines = []
++    for name, stats in series_stats.items():
++        lines.append(
++            f"{name}: last={_fmt(stats['last'])}, min={_fmt(stats['min'])}, "
++            f"max={_fmt(stats['max'])}, slope@{last_k}={_fmt(stats['slope'])}"
++        )
++    if probe_points is not None and outer_iters:
++        coverage = probe_points / max(outer_iters, 1)
++        lines.append(f"probe_points={probe_points} ({coverage:.1%} of {outer_iters})")
++    return "\n".join(lines)
++
++
++def _plot_series(
++    *,
++    x: np.ndarray,
++    series: Dict[str, np.ndarray],
++    title: str,
++    out_path: Path,
++    annotation: Optional[str] = None,
++    hline: Optional[float] = None,
++    sustained_windows: Optional[List[Tuple[float, float]]] = None,
++    vlines: Optional[List[float]] = None,
++) -> None:
++    plt.figure(figsize=(7.2, 4.2))
++    for label, y in series.items():
++        plt.plot(x, y, linewidth=1.6, label=label)
++    if vlines:
++        for xval in vlines:
++            plt.axvline(xval, color="gray", linestyle="--", linewidth=0.8, alpha=0.35)
++    if hline is not None:
++        plt.axhline(hline, color="red", linestyle="--", linewidth=1.0, alpha=0.7)
++    if sustained_windows:
++        for idx, (start, end) in enumerate(sustained_windows):
++            plt.axvspan(start, end, color="orange", alpha=0.15)
++            if idx == 0:
++                plt.gca().text(
++                    start,
++                    0.98,
++                    "sustained",
++                    transform=plt.gca().get_xaxis_transform(),
++                    va="top",
++                    ha="left",
++                    fontsize=8,
++                    color="darkorange",
++                )
++    plt.title(title)
++    plt.xlabel("iter")
++    plt.grid(alpha=0.3)
++    if len(series) > 1:
++        plt.legend(fontsize=8)
++    if annotation:
++        plt.gca().text(
++            0.02,
++            0.98,
++            annotation,
++            transform=plt.gca().transAxes,
++            va="top",
++            ha="left",
++            fontsize=8,
++            bbox={"facecolor": "white", "alpha": 0.75, "edgecolor": "none"},
++        )
++    plt.tight_layout()
++    out_path.parent.mkdir(parents=True, exist_ok=True)
++    plt.savefig(out_path, dpi=150)
++    plt.close()
++
++
++def _plot_td_loss_qhat(
++    *,
++    td_iters: np.ndarray,
++    td_loss: np.ndarray,
++    q_iters: np.ndarray,
++    td_loss_from_q: np.ndarray,
++    abs_diff: np.ndarray,
++    rel_diff: np.ndarray,
++    out_path: Path,
++    vlines: Optional[List[float]] = None,
++) -> None:
++    fig, axes = plt.subplots(2, 1, figsize=(7.2, 6.4), sharex=True)
++    axes[0].plot(td_iters, td_loss, label="td_loss", linewidth=1.6)
++    axes[0].plot(
++        q_iters,
++        td_loss_from_q,
++        label="td_loss_from_Q",
++        linewidth=1.2,
++        marker="o",
++        markersize=3,
++    )
++    if vlines:
++        for xval in vlines:
++            axes[0].axvline(xval, color="gray", linestyle="--", linewidth=0.8, alpha=0.35)
++    axes[0].set_ylabel("td_loss")
++    axes[0].grid(alpha=0.3)
++    axes[0].legend(fontsize=8)
++
++    axes[1].plot(q_iters, abs_diff, label="abs_diff", linewidth=1.2, marker="o", markersize=3)
++    axes[1].plot(q_iters, rel_diff, label="rel_diff", linewidth=1.2, marker="o", markersize=3)
++    if vlines:
++        for xval in vlines:
++            axes[1].axvline(xval, color="gray", linestyle="--", linewidth=0.8, alpha=0.35)
++    axes[1].set_xlabel("iter")
++    axes[1].set_ylabel("diff")
++    axes[1].grid(alpha=0.3)
++    axes[1].legend(fontsize=8)
++
++    fig.suptitle("td_loss vs td_loss_from_Q")
++    fig.tight_layout(rect=[0, 0.02, 1, 0.96])
++    out_path.parent.mkdir(parents=True, exist_ok=True)
++    fig.savefig(out_path, dpi=150)
++    plt.close(fig)
++
++
++def _probe_points(probe_csv: Path) -> int:
++    data = _load_csv(probe_csv)
++    if not data:
++        return 0
++    return len(data.get("iter", []))
++
++
++def _write_merged_table(
++    *,
++    curves: Dict[str, List[float]],
++    probes_dir: Path,
++    out_path: Path,
++) -> None:
++    if not curves:
++        return
++    iters = curves.get("iter", list(range(len(next(iter(curves.values()))))))
++    base_columns = [
++        "iter",
++        "td_loss",
++        "w_norm",
++        "tracking_gap",
++        "teacher_error",
++        "mean_rho",
++        "mean_rho2",
++        "min_rho",
++        "max_rho",
++        "p95_rho",
++        "p99_rho",
++        "p95_rho2",
++        "p99_rho2",
++        "max_rho2",
++        "delta_mean",
++        "delta_std",
++        "delta_p95",
++        "delta_p99",
++        "delta_max",
++    ]
++    probe_maps = {
++        "stability": _probe_map(probes_dir / "stability_probe.csv"),
++        "fixed_point": _probe_map(probes_dir / "fixed_point_probe.csv"),
++        "distribution": _probe_map(probes_dir / "distribution_probe.csv"),
++        "q_kernel": _probe_map(probes_dir / "q_kernel_probe.csv"),
++    }
++    probe_columns: List[str] = []
++    for mapping in probe_maps.values():
++        for row in mapping.values():
++            for key in row.keys():
++                if key == "iter":
++                    continue
++                if key not in probe_columns:
++                    probe_columns.append(key)
++
++    out_path.parent.mkdir(parents=True, exist_ok=True)
++    with out_path.open("w", newline="") as handle:
++        writer = csv.DictWriter(handle, fieldnames=base_columns + probe_columns)
++        writer.writeheader()
++        for idx, raw_iter in enumerate(iters):
++            if not math.isfinite(raw_iter):
++                continue
++            iter_key = int(raw_iter)
++            row = {
++                "iter": raw_iter,
++                "td_loss": curves.get("td_loss", [math.nan] * len(iters))[idx],
++                "w_norm": curves.get("w_norm", [math.nan] * len(iters))[idx],
++                "tracking_gap": curves.get("tracking_gap", [math.nan] * len(iters))[idx],
++                "teacher_error": curves.get("critic_teacher_error", [math.nan] * len(iters))[idx],
++                "mean_rho": curves.get("mean_rho", [math.nan] * len(iters))[idx],
++                "mean_rho2": curves.get("mean_rho2", [math.nan] * len(iters))[idx],
++                "min_rho": curves.get("min_rho", [math.nan] * len(iters))[idx],
++                "max_rho": curves.get("max_rho", [math.nan] * len(iters))[idx],
++                "p95_rho": curves.get("p95_rho", [math.nan] * len(iters))[idx],
++                "p99_rho": curves.get("p99_rho", [math.nan] * len(iters))[idx],
++                "p95_rho2": curves.get("p95_rho2", [math.nan] * len(iters))[idx],
++                "p99_rho2": curves.get("p99_rho2", [math.nan] * len(iters))[idx],
++                "max_rho2": curves.get("max_rho2", [math.nan] * len(iters))[idx],
++                "delta_mean": curves.get("delta_mean", [math.nan] * len(iters))[idx],
++                "delta_std": curves.get("delta_std", [math.nan] * len(iters))[idx],
++                "delta_p95": curves.get("delta_p95", [math.nan] * len(iters))[idx],
++                "delta_p99": curves.get("delta_p99", [math.nan] * len(iters))[idx],
++                "delta_max": curves.get("delta_max", [math.nan] * len(iters))[idx],
++            }
++            for mapping in probe_maps.values():
++                probe_row = mapping.get(iter_key)
++                if not probe_row:
++                    continue
++                for key, value in probe_row.items():
++                    if key == "iter":
++                        continue
++                    row[key] = value
++            writer.writerow(row)
++
++
++def _metric_summary(name: str, stats: Dict[str, float], last_k: int) -> str:
++    return (
++        f"{name}: last={_fmt(stats['last'])}, min={_fmt(stats['min'])}, "
++        f"max={_fmt(stats['max'])}, slope@{last_k}={_fmt(stats['slope'])}"
++    )
++
++
++def _evidence_metrics(curves: Dict[str, List[float]], probes_dir: Path) -> Dict[str, object]:
++    td_loss = np.asarray(curves.get("td_loss", []), dtype=float)
++    w_norm = np.asarray(curves.get("w_norm", []), dtype=float)
++    iters = np.asarray(curves.get("iter", np.arange(td_loss.size)), dtype=float)
++
++    stab = _load_csv(probes_dir / "stability_probe.csv")
++    if "stability_proxy_mean" in stab:
++        stability_series = np.asarray(stab["stability_proxy_mean"], dtype=float)
++    else:
++        stability_series = np.asarray(stab.get("stability_proxy", []), dtype=float)
++
++    stability_margin = math.nan
++    if stability_series.size:
++        stab_window = _last_k(stability_series, PROBE_WINDOW)
++        if stab_window.size:
++            stability_margin = float(np.max(stab_window) - (1.0 + STABILITY_EPS))
++
++    fixed = _load_csv(probes_dir / "fixed_point_probe.csv")
++    fixed_iters = np.asarray(
++        fixed.get("iter", np.arange(len(fixed.get("w_sharp_drift", [])))),
++        dtype=float,
++    )
++    w_sharp_drift = np.asarray(fixed.get("w_sharp_drift", []), dtype=float)
++    w_gap = np.asarray(fixed.get("w_gap", []), dtype=float)
++
++    drift_slope = math.nan
++    if w_sharp_drift.size and fixed_iters.size:
++        fx = _last_k(fixed_iters, PROBE_WINDOW)
++        fy = _last_k(w_sharp_drift, PROBE_WINDOW)
++        drift_slope = _linear_slope(fx, fy) if fx.size and fy.size else math.nan
++
++    w_gap_min = math.nan
++    if w_gap.size:
++        w_gap_window = _last_k(w_gap, PROBE_WINDOW)
++        if w_gap_window.size:
++            w_gap_min = float(np.min(w_gap_window))
++
++    td_slope = math.nan
++    if td_loss.size and iters.size:
++        tx = _last_k(iters, TD_SLOPE_WINDOW)
++        ty = _last_k(td_loss, TD_SLOPE_WINDOW)
++        td_slope = _linear_slope(tx, ty) if tx.size and ty.size else math.nan
++
++    td_flat = math.isfinite(td_slope) and abs(td_slope) <= TD_SLOPE_FLAT_MAX
++    td_range = _range_last_k(td_loss, SUSTAINED_WINDOW)
++    td_flat_sustained = math.isfinite(td_range) and td_range <= TD_FLAT_RANGE_MAX
++    w_gap_ok = math.isfinite(w_gap_min) and w_gap_min >= W_GAP_MIN
++
++    w_norm_increasing = _sustained_increase(w_norm, SUSTAINED_WINDOW, W_NORM_INCREASE_MIN)
++    td_loss_increasing = _sustained_increase(td_loss, SUSTAINED_WINDOW, TD_INCREASE_MIN)
++
++    plateau_score = td_flat and td_flat_sustained and w_gap_ok and math.isfinite(drift_slope) and drift_slope > 0
++    instability_candidate = (math.isfinite(stability_margin) and stability_margin > 0) or w_norm_increasing or td_loss_increasing
++    tracking_limited_plateau_candidate = plateau_score
++
++    probe_counts = {
++        "stability": _probe_points(probes_dir / "stability_probe.csv"),
++        "fixed_point": _probe_points(probes_dir / "fixed_point_probe.csv"),
++        "distribution": _probe_points(probes_dir / "distribution_probe.csv"),
++        "q_kernel": _probe_points(probes_dir / "q_kernel_probe.csv"),
++    }
++
++    q_kernel = _load_csv(probes_dir / "q_kernel_probe.csv")
++    td_q_abs = np.asarray(q_kernel.get("td_loss_from_Q_abs_diff", []), dtype=float)
++    td_q_rel = np.asarray(q_kernel.get("td_loss_from_Q_rel_diff", []), dtype=float)
++    td_q_abs_last = float(td_q_abs[-1]) if td_q_abs.size else math.nan
++    td_q_rel_last = float(td_q_rel[-1]) if td_q_rel.size else math.nan
++
++    return {
++        "probe_counts": probe_counts,
++        "stability_margin": stability_margin,
++        "drift_slope": drift_slope,
++        "td_slope": td_slope,
++        "w_gap_min": w_gap_min,
++        "td_flat_sustained": td_flat_sustained,
++        "plateau_score": plateau_score,
++        "instability_candidate": instability_candidate,
++        "tracking_limited_plateau_candidate": tracking_limited_plateau_candidate,
++        "w_norm_increasing": w_norm_increasing,
++        "td_loss_increasing": td_loss_increasing,
++        "td_loss_from_Q_abs_diff_last": td_q_abs_last,
++        "td_loss_from_Q_rel_diff_last": td_q_rel_last,
++    }
++
++
++def _run_analysis(run_dir: Path, out_dir: Path, last_k: int) -> Dict[str, object]:
++    curves = _load_csv(run_dir / "learning_curves.csv")
++    probes_dir = run_dir / "probes"
++    config = _load_config(run_dir)
++    env_cfg = config.get("env", {}) if isinstance(config.get("env", {}), dict) else {}
++    probe_iter_markers = _probe_iters(
++        [
++            probes_dir / "stability_probe.csv",
++            probes_dir / "fixed_point_probe.csv",
++            probes_dir / "distribution_probe.csv",
++            probes_dir / "q_kernel_probe.csv",
++        ]
++    )
++
++    outer_iters = int(config.get("outer_iters", 0) or len(curves.get("iter", [])))
++    probes_cfg = config.get("probes", {}) if isinstance(config.get("probes", {}), dict) else {}
++    probes_every = int(probes_cfg.get("every", 0) or 0)
++    feature_dim = int(env_cfg.get("feature_dim", 0) or 0)
++    trajectories = int(config.get("trajectories", 0) or 0)
++    horizon = int(config.get("horizon", 0) or 0)
++    alpha_w = float(config.get("alpha_w", 0.0) or 0.0)
++
++    run_out = out_dir / run_dir.name
++    run_out.mkdir(parents=True, exist_ok=True)
++    _write_merged_table(curves=curves, probes_dir=probes_dir, out_path=run_out / "merged_metrics.csv")
++
++    curve_metrics = ["td_loss", "w_norm", "mean_rho2", "tracking_gap", "critic_teacher_error"]
++    curve_stats: Dict[str, Dict[str, float]] = {}
++    for metric in curve_metrics:
++        if metric not in curves:
++            continue
++        x = np.asarray(curves.get("iter", list(range(len(curves[metric])))), dtype=float)
++        y = np.asarray(curves[metric], dtype=float)
++        stats = _series_stats(x, y, last_k)
++        curve_stats[metric] = stats
++        annotation = _annotation_text({metric: stats}, last_k=last_k)
++        _plot_series(
++            x=x,
++            series={metric: y},
++            title=f"{run_dir.name}: {metric}",
++            out_path=run_out / f"curves_{metric}.png",
++            annotation=annotation,
++            vlines=probe_iter_markers,
++        )
++
++    # Distribution probe
++    dist_stats: Dict[str, Dict[str, float]] = {}
++    dist_path = probes_dir / "distribution_probe.csv"
++    if dist_path.exists():
++        dist = _load_csv(dist_path)
++        x = np.asarray(dist.get("iter", list(range(len(dist.get("mmd2", []))))), dtype=float)
++        series = {}
++        for key, label in [
++            ("mmd2", "dist_mmd2"),
++            ("mean_l2", "dist_mean_l2"),
++            ("dist_action_kl", "dist_action_kl"),
++            ("dist_action_tv", "dist_action_tv"),
++        ]:
++            if key in dist:
++                y = np.asarray(dist[key], dtype=float)
++                series[label] = y
++                dist_stats[label] = _series_stats(x, y, last_k)
++        if series:
++            annotation = _annotation_text(
++                dist_stats,
++                last_k=last_k,
++                probe_points=_probe_points(dist_path),
++                outer_iters=outer_iters,
++            )
++            _plot_series(
++                x=x,
++                series=series,
++                title=f"{run_dir.name}: distribution_probe",
++                out_path=run_out / "probes_distribution.png",
++                annotation=annotation,
++            )
++
++    # Fixed point probe
++    fixed_stats: Dict[str, Dict[str, float]] = {}
++    fixed_path = probes_dir / "fixed_point_probe.csv"
++    if fixed_path.exists():
++        fixed = _load_csv(fixed_path)
++        x = np.asarray(fixed.get("iter", list(range(len(fixed.get("w_gap", []))))), dtype=float)
++        series = {}
++        for key, label in [("w_gap", "fixed_point_gap"), ("w_sharp_drift", "fixed_point_drift")]:
++            if key in fixed:
++                y = np.asarray(fixed[key], dtype=float)
++                series[label] = y
++                fixed_stats[label] = _series_stats(x, y, last_k)
++        if series:
++            annotation = _annotation_text(
++                fixed_stats,
++                last_k=last_k,
++                probe_points=_probe_points(fixed_path),
++                outer_iters=outer_iters,
++            )
++            _plot_series(
++                x=x,
++                series=series,
++                title=f"{run_dir.name}: fixed_point_probe",
++                out_path=run_out / "probes_fixed_point.png",
++                annotation=annotation,
++            )
++
++    # Stability probe
++    stab_stats: Dict[str, Dict[str, float]] = {}
++    stab_path = probes_dir / "stability_probe.csv"
++    if stab_path.exists():
++        stab = _load_csv(stab_path)
++        x = np.asarray(stab.get("iter", list(range(len(stab.get("stability_proxy", []))))), dtype=float)
++        series = {}
++        if "stability_proxy_mean" in stab:
++            y = np.asarray(stab["stability_proxy_mean"], dtype=float)
++            series["stability_proxy_mean"] = y
++            stab_stats["stability_proxy_mean"] = _series_stats(x, y, last_k)
++        elif "stability_proxy" in stab:
++            y = np.asarray(stab["stability_proxy"], dtype=float)
++            series["stability_proxy"] = y
++            stab_stats["stability_proxy"] = _series_stats(x, y, last_k)
++        if "stability_proxy_std" in stab:
++            y_std = np.asarray(stab["stability_proxy_std"], dtype=float)
++            series["stability_proxy_std"] = y_std
++            stab_stats["stability_proxy_std"] = _series_stats(x, y_std, last_k)
++        if series:
++            main_key = "stability_proxy_mean" if "stability_proxy_mean" in stab_stats else "stability_proxy"
++            series_main = np.asarray(stab.get(main_key, []), dtype=float)
++            sustained = _find_sustained_windows(x, series_main, 1.0 + STABILITY_EPS, SUSTAINED_WINDOW)
++            annotation = _annotation_text(
++                stab_stats,
++                last_k=last_k,
++                probe_points=_probe_points(stab_path),
++                outer_iters=outer_iters,
++            )
++            _plot_series(
++                x=x,
++                series=series,
++                title=f"{run_dir.name}: stability_probe",
++                out_path=run_out / "probes_stability.png",
++                annotation=annotation,
++                hline=1.0 + STABILITY_EPS,
++                sustained_windows=sustained,
++            )
++
++    # Q-kernel probe
++    q_kernel_stats: Dict[str, Dict[str, float]] = {}
++    q_kernel_path = probes_dir / "q_kernel_probe.csv"
++    if q_kernel_path.exists():
++        q_kernel = _load_csv(q_kernel_path)
++        q_iters = np.asarray(q_kernel.get("iter", []), dtype=float)
++        td_loss = np.asarray(curves.get("td_loss", []), dtype=float)
++        td_iters = np.asarray(curves.get("iter", np.arange(td_loss.size)), dtype=float)
++        td_loss_from_q = np.asarray(q_kernel.get("td_loss_from_Q", []), dtype=float)
++        abs_diff = np.asarray(q_kernel.get("td_loss_from_Q_abs_diff", []), dtype=float)
++        rel_diff = np.asarray(q_kernel.get("td_loss_from_Q_rel_diff", []), dtype=float)
++        for key, series in [
++            ("td_loss_from_Q", td_loss_from_q),
++            ("td_loss_from_Q_abs_diff", abs_diff),
++            ("td_loss_from_Q_rel_diff", rel_diff),
++        ]:
++            if q_iters.size and series.size:
++                q_kernel_stats[key] = _series_stats(q_iters, series, last_k)
++        if td_iters.size and q_iters.size:
++            _plot_td_loss_qhat(
++                td_iters=td_iters,
++                td_loss=td_loss,
++                q_iters=q_iters,
++                td_loss_from_q=td_loss_from_q,
++                abs_diff=abs_diff,
++                rel_diff=rel_diff,
++                out_path=run_out / "curves_td_loss_qhat.png",
++                vlines=probe_iter_markers,
++            )
++
++    probe_counts = {
++        "distribution": _probe_points(dist_path),
++        "fixed_point": _probe_points(fixed_path),
++        "stability": _probe_points(stab_path),
++        "q_kernel": _probe_points(q_kernel_path),
++    }
++    evidence = _evidence_metrics(curves, probes_dir)
++
++    return {
++        "run_dir": str(run_dir),
++        "outer_iters": outer_iters,
++        "probes_every": probes_every,
++        "feature_dim": feature_dim,
++        "trajectories": trajectories,
++        "horizon": horizon,
++        "alpha_w": alpha_w,
++        "curve_stats": curve_stats,
++        "dist_stats": dist_stats,
++        "fixed_stats": fixed_stats,
++        "stability_stats": stab_stats,
++        "q_kernel_stats": q_kernel_stats,
++        "probe_counts": probe_counts,
++        "evidence": evidence,
++    }
++
++
++def _scale_note(summary: Dict[str, object]) -> Tuple[str, float]:
++    run_dir = Path(str(summary.get("run_dir", "")))
++    alpha_w = float(summary.get("alpha_w", 0.0) or 0.0)
++    trajectories = int(summary.get("trajectories", 0) or 0)
++    horizon = int(summary.get("horizon", 0) or 0)
++    total_steps = max(trajectories * horizon, 1)
++    train_step_scale = alpha_w / total_steps if alpha_w > 0 else float("nan")
++    stability_scale = float("nan")
++    probe_path = run_dir / "probes" / "stability_probe.csv"
++    if probe_path.exists():
++        probe = _load_csv(probe_path)
++        if "stability_probe_step_scale" in probe and probe["stability_probe_step_scale"]:
++            stability_scale = float(probe["stability_probe_step_scale"][-1])
++    ratio = stability_scale / train_step_scale if math.isfinite(stability_scale) and math.isfinite(train_step_scale) else float("nan")
++    code = (
++        "alpha_w = {alpha_w}\n"
++        "trajectories = {trajectories}\n"
++        "horizon = {horizon}\n"
++        "train_step_scale = alpha_w / (trajectories * horizon)\n"
++        "stability_probe_step_scale = {stability_scale}\n"
++        "ratio = stability_probe_step_scale / train_step_scale\n"
++    ).format(
++        alpha_w=alpha_w,
++        trajectories=trajectories,
++        horizon=horizon,
++        stability_scale=stability_scale,
++    )
++    return code, ratio
++
++
++def main() -> None:
++    args = parse_args()
++    plateau_run = Path(args.plateau_run)
++    instability_run = Path(args.instability_run)
++
++    if args.out_dir:
++        out_dir = Path(args.out_dir)
++    else:
++        if plateau_run.parent == instability_run.parent:
++            out_dir = plateau_run.parent / "stepC_analysis"
++        else:
++            out_dir = Path.cwd() / "stepC_analysis"
++    out_dir.mkdir(parents=True, exist_ok=True)
++
++    plateau_summary = _run_analysis(plateau_run, out_dir, args.last_k)
++    instability_summary = _run_analysis(instability_run, out_dir, args.last_k)
++    plateau_ev: Dict[str, object] = plateau_summary["evidence"]  # type: ignore[assignment]
++    instability_ev: Dict[str, object] = instability_summary["evidence"]  # type: ignore[assignment]
++
++    def _coverage(count: int, outer_iters: int) -> str:
++        if outer_iters <= 0:
++            return "-"
++        return f"{count} ({count / outer_iters:.1%} of {outer_iters})"
++
++    plateau_scale_code, plateau_ratio = _scale_note(plateau_summary)
++    instability_scale_code, instability_ratio = _scale_note(instability_summary)
++
++    def _rho_note(summary: Dict[str, object]) -> str:
++        curves = _load_csv(Path(str(summary.get("run_dir", ""))) / "learning_curves.csv")
++        mean_rho_series = np.asarray(curves.get("mean_rho", []), dtype=float)
++        mean_rho_last = float(mean_rho_series[-1]) if mean_rho_series.size else math.nan
++        config = _load_config(Path(str(summary.get("run_dir", ""))))
++        env_cfg = config.get("env", {}) if isinstance(config.get("env", {}), dict) else {}
++        p_mix = float(env_cfg.get("p_mix", math.nan)) if env_cfg else math.nan
++        rho_clip = config.get("rho_clip", None)
++        disable_clip = bool(config.get("disable_rho_clip", False))
++        clip_active = rho_clip is not None and float(rho_clip) > 0 and not disable_clip
++        if math.isfinite(mean_rho_last) and abs(mean_rho_last - 1.0) <= 0.05:
++            status = "mean_rho close to 1 (consistent with mu-sampled actions)."
++        elif math.isfinite(mean_rho_last):
++            status = f"mean_rho deviates from 1 (last={mean_rho_last:.4g})."
++        else:
++            status = "mean_rho unavailable."
++        clip_note = "rho_clip active" if clip_active else "rho_clip inactive"
++        return (
++            f"{status} Actions are clipped before log_prob; this truncation biases E_mu[rho] away from 1. "
++            f"p_mix={p_mix:.3g} changes state distribution but not the per-state identity. ({clip_note})"
++        )
++
++    def _lines_for(summary: Dict[str, object]) -> List[str]:
++        last_k = args.last_k
++        curve_stats: Dict[str, Dict[str, float]] = summary["curve_stats"]  # type: ignore[assignment]
++        dist_stats: Dict[str, Dict[str, float]] = summary["dist_stats"]  # type: ignore[assignment]
++        fixed_stats: Dict[str, Dict[str, float]] = summary["fixed_stats"]  # type: ignore[assignment]
++        stability_stats: Dict[str, Dict[str, float]] = summary["stability_stats"]  # type: ignore[assignment]
++        q_kernel_stats: Dict[str, Dict[str, float]] = summary["q_kernel_stats"]  # type: ignore[assignment]
++        probe_counts: Dict[str, int] = summary["probe_counts"]  # type: ignore[assignment]
++        evidence: Dict[str, object] = summary["evidence"]  # type: ignore[assignment]
++        outer_iters = int(summary.get("outer_iters", 0) or 0)
++        probes_every = int(summary.get("probes_every", 0) or 0)
++
++        lines = []
++        lines.append("- Observations:")
++        for metric in ["td_loss", "w_norm", "mean_rho2", "tracking_gap", "critic_teacher_error"]:
++            if metric in curve_stats:
++                lines.append(f"  - { _metric_summary(metric, curve_stats[metric], last_k) }")
++        if stability_stats:
++            stab_key = None
++            if "stability_proxy_mean" in stability_stats:
++                stab_key = "stability_proxy_mean"
++            elif "stability_proxy" in stability_stats:
++                stab_key = "stability_proxy"
++            if stab_key:
++                lines.append(
++                    f"  - {stab_key} (probe): "
++                    + _metric_summary(stab_key, stability_stats[stab_key], last_k)
++                    + f", coverage={_coverage(probe_counts['stability'], outer_iters)}"
++                )
++        if fixed_stats:
++            drift = fixed_stats.get("fixed_point_drift", {})
++            lines.append(
++                "  - fixed_point_drift (probe): "
++                + _metric_summary("fixed_point_drift", drift, last_k)
++                + f", coverage={_coverage(probe_counts['fixed_point'], outer_iters)}"
++            )
++        if dist_stats:
++            for key in ["dist_mmd2", "dist_mean_l2", "dist_action_kl", "dist_action_tv"]:
++                if key in dist_stats:
++                    lines.append(
++                        "  - "
++                        + _metric_summary(key, dist_stats[key], last_k)
++                        + f", coverage={_coverage(probe_counts['distribution'], outer_iters)}"
++                    )
++        if q_kernel_stats:
++            for key in ["td_loss_from_Q", "td_loss_from_Q_abs_diff", "td_loss_from_Q_rel_diff"]:
++                if key in q_kernel_stats:
++                    lines.append(
++                        "  - "
++                        + _metric_summary(key, q_kernel_stats[key], last_k)
++                        + f", coverage={_coverage(probe_counts.get('q_kernel', 0), outer_iters)}"
++                    )
++
++        lines.append("- Missing evidence:")
++        probe_max = max(probe_counts.values()) if probe_counts else 0
++        if probe_max < 3:
++            lines.append(
++                "  - probe coverage is sparse (<3 points), trends for drift/stability cannot be trusted."
++            )
++        elif probe_max < 5:
++            lines.append("  - probe coverage is limited (<5 points), trend estimates remain weak.")
++        elif probe_max < 10:
++            lines.append("  - probe coverage is still light (<10 points); evidence chains are weaker.")
++        if probe_counts.get("fixed_point", 0) < 2:
++            lines.append("  - fixed_point_drift trend cannot be established without multiple probe points.")
++
++        lines.append("- Evidence chain:")
++        lines.append(
++            "  - stability_margin="
++            f"{_fmt(evidence.get('stability_margin'))} "
++            f"(>0 -> instability candidate)"
++        )
++        lines.append(
++            "  - drift_slope="
++            f"{_fmt(evidence.get('drift_slope'))} "
++            f"(>0 supports plateau drift)"
++        )
++        lines.append(
++            "  - td_loss_slope="
++            f"{_fmt(evidence.get('td_slope'))} "
++            f"(|slope|<{TD_SLOPE_FLAT_MAX:g} -> flat)"
++        )
++        lines.append(
++            "  - w_gap_min_last_window="
++            f"{_fmt(evidence.get('w_gap_min'))} "
++            f"(>= {W_GAP_MIN:g} -> tracking gap persists)"
++        )
++        return lines
++
++    def _absence_reason(ev: Dict[str, object], probe_counts: Dict[str, int], mode: str) -> str:
++        probe_min = min(probe_counts.values()) if probe_counts else 0
++        if probe_min < 10:
++            return "instrumentation: probe_points<10; increase probes.every or run longer."
++        if mode == "instability":
++            if probe_counts.get("stability", 0) < 2:
++                return "instrumentation: stability_probe has <2 points; cannot resolve stability_margin."
++            reasons = []
++            stability_margin = ev.get("stability_margin")
++            if not isinstance(stability_margin, (int, float)) or not math.isfinite(float(stability_margin)):
++                reasons.append("stability_margin unavailable")
++            elif float(stability_margin) <= 0:
++                reasons.append("stability_margin<=0")
++            if not ev.get("w_norm_increasing") and not ev.get("td_loss_increasing"):
++                reasons.append("no sustained w_norm/td_loss increase")
++            if reasons:
++                return "parameter regime: " + "; ".join(reasons)
++            return "instrumentation: insufficient probe coverage."
++        if probe_counts.get("fixed_point", 0) < 2:
++            return "instrumentation: fixed_point_probe has <2 points; drift_slope unreliable."
++        reasons = []
++        drift_slope = ev.get("drift_slope")
++        if not isinstance(drift_slope, (int, float)) or not math.isfinite(float(drift_slope)) or float(drift_slope) <= 0:
++            reasons.append("drift_slope<=0")
++        w_gap_min = ev.get("w_gap_min")
++        if not isinstance(w_gap_min, (int, float)) or not math.isfinite(float(w_gap_min)) or float(w_gap_min) < W_GAP_MIN:
++            reasons.append("w_gap_min below threshold")
++        td_slope = ev.get("td_slope")
++        if not isinstance(td_slope, (int, float)) or not math.isfinite(float(td_slope)) or abs(float(td_slope)) > TD_SLOPE_FLAT_MAX:
++            reasons.append("td_loss slope not flat")
++        if reasons:
++            return "parameter regime: " + "; ".join(reasons)
++        return "instrumentation: insufficient probe coverage."
++
++    plateau_present = bool(plateau_ev.get("tracking_limited_plateau_candidate"))
++    instability_present = bool(instability_ev.get("instability_candidate"))
++    plateau_probe_counts = plateau_ev.get("probe_counts", plateau_summary.get("probe_counts", {}))
++    instability_probe_counts = instability_ev.get("probe_counts", instability_summary.get("probe_counts", {}))
++
++    if plateau_present and instability_present:
++        reason_line = "n/a"
++    elif not plateau_present and not instability_present:
++        reason_line = (
++            "plateau: "
++            + _absence_reason(plateau_ev, plateau_probe_counts, "plateau")
++            + "; instability: "
++            + _absence_reason(instability_ev, instability_probe_counts, "instability")
++        )
++    elif not plateau_present:
++        reason_line = "plateau: " + _absence_reason(plateau_ev, plateau_probe_counts, "plateau")
++    else:
++        reason_line = "instability: " + _absence_reason(instability_ev, instability_probe_counts, "instability")
++
++    diff_files = sorted({f for f in args.diff_files if f})
++    key_paths = [p for p in args.key_paths if p]
++
++    report_lines = [
++        "# Step C analysis (plateau vs instability)",
++        "",
++        "## Repo diff (files)",
++        *(["- " + path for path in diff_files] if diff_files else ["- (not provided)"]),
++        "",
++        "## Key outputs",
++        *(["- " + path for path in key_paths] if key_paths else ["- (not provided)"]),
++        "",
++        f"Artifacts: {out_dir}",
++        "",
++        f"## plateau ({plateau_summary['run_dir']})",
++        *_lines_for(plateau_summary),
++        "",
++        f"## instability ({instability_summary['run_dir']})",
++        *_lines_for(instability_summary),
++        "",
++        "## Scale check (training vs stability_probe)",
++        "",
++        "plateau:",
++        "```python",
++        plateau_scale_code,
++        "```",
++        f"ratio (probe/train) = {_fmt(plateau_ratio)}",
++        "",
++        "instability:",
++        "```python",
++        instability_scale_code,
++        "```",
++        f"ratio (probe/train) = {_fmt(instability_ratio)}",
++        "",
++        "## Metric alignment notes",
++        "",
++        "- td_loss in training is mean(delta^2) over all steps; it matches (1/T) * sum_t E[Delta(t)^2].",
++        "- td_loss_from_Q uses cached Delta to compute Q_hat(t,t') = E_b[Delta(t)Delta(t')] and",
++        "  td_loss_from_Q = (1/(2T_cache)) * sum_t Q_hat(t,t); expect ~0.5 * td_loss.",
++        "- rho consistency checks:",
++        f"  - plateau: {_rho_note(plateau_summary)}",
++        f"  - instability: {_rho_note(instability_summary)}",
++        "",
++        "## Verdict",
++        "",
++        "- instability evidence: "
++        + ("present" if instability_present else "absent")
++        + f" (stability_margin={_fmt(instability_ev.get('stability_margin'))}, "
++        + f"w_norm_increasing={instability_ev.get('w_norm_increasing')}, "
++        + f"td_loss_increasing={instability_ev.get('td_loss_increasing')})",
++        "- plateau (tracking-limited) evidence: "
++        + ("present" if plateau_present else "absent")
++        + f" (drift_slope={_fmt(plateau_ev.get('drift_slope'))}, "
++        + f"w_gap_min={_fmt(plateau_ev.get('w_gap_min'))}, "
++        + f"td_loss_slope={_fmt(plateau_ev.get('td_slope'))})",
++        "- if absent, likely reason: " + reason_line,
++    ]
++
++    (out_dir / "stepC_analysis.md").write_text("\n".join(report_lines))
++    print(f"Saved Step C analysis to {out_dir}")
++
++
++if __name__ == "__main__":
++    main()

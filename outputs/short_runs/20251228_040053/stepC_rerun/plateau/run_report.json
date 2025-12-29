@@ -1,0 +1,25 @@
+{
+  "evidence_chain": {
+    "probe_points_count": {
+      "stability_probe": 0,
+      "fixed_point_probe": 0,
+      "distribution_probe": 0
+    },
+    "stability_margin": null,
+    "drift_slope": null,
+    "td_loss_slope_last_k": null,
+    "w_gap_min_last_window": null,
+    "plateau_score": false,
+    "instability_candidate": false,
+    "tracking_limited_plateau_candidate": false,
+    "stability_eps": 0.001,
+    "probe_window": 5,
+    "td_slope_window": 20,
+    "sustained_window": 5,
+    "w_gap_threshold": 0.001,
+    "td_slope_flat_max": 1e-06,
+    "td_flat_range_max": 1e-06,
+    "td_increase_min": 1e-06,
+    "w_norm_increase_min": 0.0001
+  }
+}

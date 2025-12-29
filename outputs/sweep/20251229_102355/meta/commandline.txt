@@ -1,0 +1,1 @@
+scripts/sweep_stepC.py --base-config configs/train_plateau.yaml --outer-iters 200 --grid 2 --jobs 1

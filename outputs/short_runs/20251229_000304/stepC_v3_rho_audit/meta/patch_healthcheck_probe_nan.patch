@@ -1,0 +1,82 @@
+--- /tmp/run_report.py.before	2025-12-28 23:40:40
++++ tdrl_unfixed_ac/reporting/run_report.py	2025-12-28 23:42:33
+@@ -32,6 +32,9 @@
+     "dist_mean_l2",
+     "dist_action_kl",
+     "dist_action_tv",
++    "td_loss_from_Q",
++    "td_loss_from_Q_abs_diff",
++    "td_loss_from_Q_rel_diff",
+ ]
+ TIME_COLUMNS = {"iter", "step"}
+ DEFAULT_ON_POLICY_DIST_MMD2_THRESHOLD = 0.0783317
+@@ -421,15 +424,51 @@
+             "applicable": True,
+         }
+     else:
+-        nan_count, inf_count, nan_cols, inf_cols = _scan_nan_inf(rows, probe_cols)
+-        missing_count = nan_count + inf_count
+-        passed = missing_count == 0 or not strict_probe
+-        if missing_count == 0:
+-            reason = "all probe columns finite"
+-        elif strict_probe:
+-            reason = "probe columns contain NaN/Inf values with probes.every=1"
++        coverage_map = {"fixed_point_drift": "fixed_point_drift_defined"}
++        nan_cols: List[str] = []
++        inf_cols: List[str] = []
++        missing_cols: List[str] = []
++        coverage_rows: Dict[str, int] = {}
++        nan_count = 0
++        inf_count = 0
++        missing_count = 0
++
++        for col in probe_cols:
++            coverage_col = coverage_map.get(col)
++            for row in rows:
++                coverage_ok = True
++                if coverage_col is not None:
++                    cov_val = row.get(coverage_col)
++                    coverage_ok = isinstance(cov_val, (int, float)) and cov_val > 0.0
++                    if coverage_ok:
++                        coverage_rows[col] = coverage_rows.get(col, 0) + 1
++                if not coverage_ok:
++                    continue
++                value = row.get(col)
++                if value is None:
++                    if coverage_col is not None:
++                        missing_count += 1
++                        if col not in missing_cols:
++                            missing_cols.append(col)
++                    continue
++                if isinstance(value, (int, float)):
++                    val = float(value)
++                    if math.isnan(val):
++                        if coverage_col is not None:
++                            nan_count += 1
++                            if col not in nan_cols:
++                                nan_cols.append(col)
++                    elif math.isinf(val):
++                        inf_count += 1
++                        if col not in inf_cols:
++                            inf_cols.append(col)
++
++        missing_count_total = nan_count + inf_count + missing_count
++        passed = missing_count_total == 0
++        if missing_count_total == 0:
++            reason = "probe columns finite where coverage indicates"
+         else:
+-            reason = "probe columns contain NaN/Inf values (allowed when probes not run)"
++            reason = "probe columns contain non-finite values on covered rows"
+         checks["probe_missing_values"] = {
+             "pass": passed,
+             "reason": reason,
+@@ -439,6 +478,9 @@
+                 "missing_count": missing_count,
+                 "nan_cols": nan_cols,
+                 "inf_cols": inf_cols,
++                "missing_cols": missing_cols,
++                "coverage_rows": coverage_rows,
++                "coverage_map": coverage_map,
+                 "probe_cols": probe_cols,
+                 "probes_enabled": probes_enabled,
+                 "probes_every": probes_every,

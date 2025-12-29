@@ -1,0 +1,2 @@
+{"iter": 5, "mmd2": 0.005939713324005447, "mmd_sigma": 2.3539040490833747, "mean_l2": 0.24938052603657052, "num_samples": 4096, "dist_action_kl": 0.042995237205547175, "dist_action_tv": 0.11281145562084752, "action_samples": 64}
+{"iter": 9, "mmd2": 0.009514660752081072, "mmd_sigma": 2.355943920482987, "mean_l2": 0.30640452656733047, "num_samples": 4096, "dist_action_kl": 0.042995237205554884, "dist_action_tv": 0.11295739984207054, "action_samples": 64}

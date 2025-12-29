@@ -1,0 +1,2 @@
+# Sanity check: fixed policy, verifies actor updates are disabled.
+alpha_pi: 0.0

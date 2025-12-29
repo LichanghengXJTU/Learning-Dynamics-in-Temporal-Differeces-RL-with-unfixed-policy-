@@ -1,0 +1,53 @@
+K_mc: 2
+alpha_pi: 0.05
+alpha_w: 0.1
+beta: 0.2
+check_name: full_triad_short
+checkpoint_every: 1
+env:
+  actor_feature_dim: 64
+  feature_dim: 256
+  p_mix: 0.1
+env_config_path: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences
+  Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml
+gamma: 0.95
+horizon: 50
+log_every: 1
+outer_iters: 8
+output_dir: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement
+  Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_184054/full_triad_short
+probes:
+  distribution:
+    enabled: true
+    num_samples: 512
+  enabled: true
+  every: 1
+  fixed_point:
+    batch_size: 512
+    enabled: true
+    k_mc: 2
+    max_iters: 200
+    tol: 1e-6
+  plateau:
+    cooldown: 5
+    enabled: false
+    min_iter: 5
+    tol: 0.001
+    window: 5
+  stability:
+    batch_size: 512
+    enabled: true
+    k_mc: 2
+    n_power_iters: 20
+    power_iters: 20
+report_every: 0
+report_every_seconds: 0
+resume: false
+resume_from: null
+seed: 0
+sigma_mu: 0.3
+sigma_pi: 0.2
+theta_init_scale: 0.1
+theta_radius: 5.0
+trajectories: 2
+w_init_scale: 0.1

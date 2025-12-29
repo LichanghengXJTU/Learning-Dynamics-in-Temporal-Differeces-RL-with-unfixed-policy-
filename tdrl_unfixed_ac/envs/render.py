@@ -204,9 +204,7 @@ class TorusRenderer:
         v_max = float(getattr(self.env, "v_max", 1.0))
         if v_max <= 0.0:
             return
-        norm = float(np.linalg.norm(action))
-        if norm > v_max and norm > 0.0:
-            action = action / norm * v_max
+        action = np.clip(action, -v_max, v_max)
         arrow = action / v_max * (0.3 * self.torus_size)
         start = np.asarray(adv, dtype=float)
         end = start + arrow

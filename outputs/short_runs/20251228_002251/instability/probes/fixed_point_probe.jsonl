@@ -1,0 +1,4 @@
+{"iter": 19, "w_gap": 0.1971046037312429, "w_sharp_drift": 0.0, "w_sharp_drift_defined": 0.0, "converged": false, "num_iters": 2000, "batch_size": 4096, "tol": 1e-07}
+{"iter": 39, "w_gap": 0.1955775504196975, "w_sharp_drift": 0.040718969739002235, "w_sharp_drift_defined": 1.0, "converged": false, "num_iters": 2000, "batch_size": 4096, "tol": 1e-07}
+{"iter": 59, "w_gap": 0.20044781381125404, "w_sharp_drift": 0.04175557771729821, "w_sharp_drift_defined": 1.0, "converged": false, "num_iters": 2000, "batch_size": 4096, "tol": 1e-07}
+{"iter": 79, "w_gap": 0.18751938806117976, "w_sharp_drift": 0.04711187592713028, "w_sharp_drift_defined": 1.0, "converged": false, "num_iters": 2000, "batch_size": 4096, "tol": 1e-07}

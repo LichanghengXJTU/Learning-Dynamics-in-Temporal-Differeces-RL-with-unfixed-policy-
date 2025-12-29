@@ -1,0 +1,5 @@
+run_name,label,status,mean_rho2,stability_proxy,fixed_point_drift,dist_mmd2,dist_action_kl,dist_action_tv,reasons,run_dir
+fixed_pi,unknown,UNKNOWN,1.480000678331054,0.9999917340584825,0.017212841740933394,0.018054739395543917,,,,outputs/sanity_suite/20251227_184054/fixed_pi
+full_triad_short,unknown,UNKNOWN,1.6703710201030901,0.9999917568193094,0.02569435520355139,0.03615768433471522,,,,outputs/sanity_suite/20251227_184054/full_triad_short
+no_bootstrap,unknown,UNKNOWN,1.4800007583294021,0.9999720584644873,0.02955709482694678,0.018054714257991544,,,,outputs/sanity_suite/20251227_184054/no_bootstrap
+on_policy,on_policy,UNKNOWN,1.0,0.9999934827737278,0.015239748699403508,0.020349567022197035,,,,outputs/sanity_suite/20251227_184054/on_policy

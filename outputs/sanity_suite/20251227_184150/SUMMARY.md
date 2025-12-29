@@ -1,0 +1,8 @@
+# Summary
+
+| run | label | status | mean_rho2 | stability_proxy | fixed_point_drift | dist_mmd2 | dist_action_kl | dist_action_tv | reasons | run_dir |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| fixed_pi | fixed_pi | PASS | 1.48 | 1 | 0.01721 | 0.01805 | 0.2554 | 0.2932 | all checks passed | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_184150/fixed_pi |
+| full_triad_short | full_triad_short | PASS | 1.67 | 1 | 0.02569 | 0.03616 | 0.2554 | 0.291 | all checks passed | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_184150/full_triad_short |
+| no_bootstrap | no_bootstrap | PASS | 1.48 | 1 | 0.02956 | 0.01805 | 0.2554 | 0.2932 | all checks passed | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_184150/no_bootstrap |
+| on_policy | on_policy | PASS | 1 | 1 | 0.01524 | 0.02035 | 0 | 0 | all checks passed | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_184150/on_policy |

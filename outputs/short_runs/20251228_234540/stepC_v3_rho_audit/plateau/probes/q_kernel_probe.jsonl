@@ -1,0 +1,2 @@
+{"iter": 5, "td_loss": 1.812143227309837e-05, "td_loss_from_Q": 8.088937772125147e-06, "td_loss_from_Q_abs_diff": 1.0032494500973223e-05, "td_loss_from_Q_rel_diff": 0.5536259137676807, "cache_batch_size": 8, "cache_horizon": 200, "cache_valid_t": 200}
+{"iter": 9, "td_loss": 1.5430827375421677e-05, "td_loss_from_Q": 7.530687990391154e-06, "td_loss_from_Q_abs_diff": 7.900139385030523e-06, "td_loss_from_Q_rel_diff": 0.5119712114474119, "cache_batch_size": 8, "cache_horizon": 200, "cache_valid_t": 200}

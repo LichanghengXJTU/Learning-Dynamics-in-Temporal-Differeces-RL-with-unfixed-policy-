@@ -1,0 +1,75 @@
+# repo_state
+/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-
+main
+a84b364b797739f6a6669e4a8308245a452d798f
+## main...origin/main
+ M configs/train_instability.yaml
+ M configs/train_plateau.yaml
+ D plots/plot_learning_curves_py.md
+ M scripts/run_train.py
+ D scripts/run_train_py.md
+ D scripts/smoke_rollout_py.md
+ D tdrl_unfixed_ac/__init___py.md
+ D tdrl_unfixed_ac/algos/__init___py.md
+ M tdrl_unfixed_ac/algos/train_unfixed_ac.py
+ D tdrl_unfixed_ac/algos/train_unfixed_ac_py.md
+ M tdrl_unfixed_ac/algos/unfixed_ac.py
+ D tdrl_unfixed_ac/algos/unfixed_ac_py.md
+ D tdrl_unfixed_ac/envs/__init___py.md
+ D tdrl_unfixed_ac/envs/render_py.md
+ D tdrl_unfixed_ac/envs/torus_gg_py.md
+ D tdrl_unfixed_ac/features/__init___py.md
+ D tdrl_unfixed_ac/features/actor_features_py.md
+ D tdrl_unfixed_ac/features/critic_features_py.md
+ D tdrl_unfixed_ac/features/observations_py.md
+ D tdrl_unfixed_ac/features/teacher_py.md
+ D tdrl_unfixed_ac/probes/__init___py.md
+ M tdrl_unfixed_ac/probes/common.py
+ D tdrl_unfixed_ac/probes/common_py.md
+ M tdrl_unfixed_ac/probes/distribution_probe.py
+ D tdrl_unfixed_ac/probes/distribution_probe_py.md
+ M tdrl_unfixed_ac/probes/fixed_point_probe.py
+ D tdrl_unfixed_ac/probes/fixed_point_probe_py.md
+ M tdrl_unfixed_ac/probes/manager.py
+ D tdrl_unfixed_ac/probes/manager_py.md
+ M tdrl_unfixed_ac/probes/stability_probe.py
+ D tdrl_unfixed_ac/probes/stability_probe_py.md
+ D tdrl_unfixed_ac/utils/__init___py.md
+ D tdrl_unfixed_ac/utils/geometry_py.md
+ M tdrl_unfixed_ac/utils/seeding.py
+ D tdrl_unfixed_ac/utils/seeding_py.md
+?? SANITY_PACKET.json
+?? SANITY_PACKET.md
+?? configs/sanity/
+?? docs/
+?? outputs/COMMANDS.md
+?? outputs/_tmp_preflight/
+?? outputs/calibration_action_divergence/
+?? outputs/calibration_on_policy_mmd/
+?? outputs/calibration_on_policy_mmd_test/
+?? outputs/preflight_train/
+?? outputs/sanity_suite/
+?? outputs/short_runs/
+?? scripts/aggregate_reports.py
+?? scripts/analyze_step_c.py
+?? scripts/calibrate_action_divergence.py
+?? scripts/calibrate_on_policy_mmd.py
+?? scripts/check_run_report.py
+?? scripts/plot_from_outputs.py
+?? scripts/rho_audit.py
+?? scripts/rho_audit_summary.py
+?? scripts/run_pipeline.sh
+?? scripts/run_sanity_suite.py
+?? scripts/summarize_updates.py
+?? scripts/test_probes_side_effect_free.py
+?? tdrl_unfixed_ac/probes/q_kernel_probe.py
+?? tdrl_unfixed_ac/reporting/
+?? tools/
+a84b364 first commit
+zsh:10: command not found: python
+Python 3.14.2
+zsh:12: command not found: pip
+
+# note
+Worktree created at ../_worktrees/stepC_v3_clean_20251228_233326 but missing required scripts (e.g., scripts/check_run_report.py, scripts/analyze_step_c.py); proceeding in dirty repo.
+Previous run attempts timed out under outputs/short_runs/20251228_234540/stepC_v3_rho_audit and outputs/short_runs/20251228_235106/stepC_v3_rho_audit; reran under this timestamp.

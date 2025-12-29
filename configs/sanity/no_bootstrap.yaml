@@ -1,0 +1,2 @@
+# Sanity check: no bootstrap, verifies gamma=0 behavior.
+gamma: 0.0

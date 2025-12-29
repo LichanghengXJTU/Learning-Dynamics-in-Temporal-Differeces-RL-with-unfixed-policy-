@@ -1,0 +1,11 @@
+Run: outputs/short_runs/20251228_002251/plateau
+Metrics:
+  mean_rho2: 1.331
+  stability_proxy: 1
+  fixed_point_drift: 0
+  dist_mmd2: 0.008802
+  dist_action_kl: 0.043
+  dist_action_tv: 0.113
+
+Suggestions:
+- No rule-based issues detected.

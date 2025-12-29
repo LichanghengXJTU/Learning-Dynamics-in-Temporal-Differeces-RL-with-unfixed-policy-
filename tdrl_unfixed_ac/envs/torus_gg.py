@@ -237,10 +237,9 @@ class TorusGobletGhostEnv:
         return np.where(mask, 1.0, -1.0)
 
     def _clip_action(self, action: np.ndarray) -> np.ndarray:
-        norm = np.linalg.norm(action)
-        if norm > self.v_max and norm > 0.0:
-            return action / norm * self.v_max
-        return action
+        if self.v_max <= 0.0:
+            return action
+        return np.clip(action, -self.v_max, self.v_max)
 
     def _wrap(self, pos: np.ndarray) -> np.ndarray:
         return wrap_torus(pos, self.torus_size)

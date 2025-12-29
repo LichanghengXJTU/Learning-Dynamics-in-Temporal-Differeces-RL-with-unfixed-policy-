@@ -1,0 +1,3913 @@
+diff --git a/configs/train_instability.yaml b/configs/train_instability.yaml
+index 75ee618..dab1acf 100644
+--- a/configs/train_instability.yaml
++++ b/configs/train_instability.yaml
+@@ -1,6 +1,6 @@
+ {
+   "seed": 0,
+-  "outer_iters": 2000,
++  "outer_iters": 200,
+   "trajectories": 16,
+   "horizon": 200,
+   "gamma": 0.99,
+@@ -13,15 +13,19 @@
+   "theta_radius": 8.0,
+   "theta_init_scale": 0.2,
+   "w_init_scale": 0.2,
++  "rho_clip": 10.0,
++  "disable_rho_clip": true,
+   "checkpoint_every": 20,
+   "log_every": 1,
+   "env_config_path": "configs/default.yaml",
+   "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.01 },
+   "probes": {
+     "enabled": true,
+-    "every": 20,
+-    "fixed_point": { "batch_size": 4096, "k_mc": 4, "max_iters": 2000, "tol": 1e-7 },
+-    "stability":   { "batch_size": 4096, "k_mc": 4, "n_power_iters": 80 },
+-    "distribution":{ "num_samples": 4096 }
++    "every": 10,
++    "plateau": { "enabled": true },
++    "fixed_point": { "batch_size": 4096, "k_mc": 8, "max_iters": 2000, "tol": 1e-7 },
++    "stability":   { "batch_size": 4096, "k_mc": 8, "n_power_iters": 80 },
++    "distribution":{ "num_samples": 4096 },
++    "q_kernel": { "enabled": true, "batch_size": 8, "max_horizon": 200 }
+   }
+ }
+diff --git a/configs/train_plateau.yaml b/configs/train_plateau.yaml
+index be99f73..90068e8 100644
+--- a/configs/train_plateau.yaml
++++ b/configs/train_plateau.yaml
+@@ -1,6 +1,6 @@
+ {
+   "seed": 0,
+-  "outer_iters": 2000,
++  "outer_iters": 200,
+   "trajectories": 16,
+   "horizon": 200,
+   "gamma": 0.99,
+@@ -13,15 +13,19 @@
+   "theta_radius": 6.0,
+   "theta_init_scale": 0.1,
+   "w_init_scale": 0.1,
++  "rho_clip": 10.0,
++  "disable_rho_clip": false,
+   "checkpoint_every": 20,
+   "log_every": 1,
+   "env_config_path": "configs/default.yaml",
+   "env": { "feature_dim": 2048, "actor_feature_dim": 512, "p_mix": 0.05 },
+   "probes": {
+     "enabled": true,
+-    "every": 50,
+-    "fixed_point": { "batch_size": 4096, "k_mc": 4, "max_iters": 2000, "tol": 1e-7 },
+-    "stability":   { "batch_size": 4096, "k_mc": 4, "n_power_iters": 80 },
+-    "distribution":{ "num_samples": 4096 }
++    "every": 10,
++    "plateau": { "enabled": true },
++    "fixed_point": { "batch_size": 4096, "k_mc": 8, "max_iters": 2000, "tol": 1e-7 },
++    "stability":   { "batch_size": 4096, "k_mc": 8, "n_power_iters": 80 },
++    "distribution":{ "num_samples": 4096 },
++    "q_kernel": { "enabled": true, "batch_size": 8, "max_horizon": 200 }
+   }
+ }
+diff --git a/plots/plot_learning_curves_py.md b/plots/plot_learning_curves_py.md
+deleted file mode 100644
+index d0a8494..0000000
+--- a/plots/plot_learning_curves_py.md
++++ /dev/null
+@@ -1,98 +0,0 @@
+-#!/usr/bin/env python3
+-"""Plot learning curves from training CSV logs."""
+-
+-from __future__ import annotations
+-
+-import argparse
+-import csv
+-from pathlib import Path
+-
+-import numpy as np
+-
+-try:
+-    import matplotlib.pyplot as plt
+-except Exception as exc:  # pragma: no cover
+-    raise SystemExit("matplotlib is required for plotting") from exc
+-
+-
+-def parse_args() -> argparse.Namespace:
+-    parser = argparse.ArgumentParser(description="Plot unfixed AC learning curves.")
+-    parser.add_argument("--csv", type=str, required=True, help="Path to learning_curves.csv")
+-    parser.add_argument("--out", type=str, default=None, help="Output image path (png).")
+-    return parser.parse_args()
+-
+-
+-def load_csv(path: Path) -> dict[str, np.ndarray]:
+-    with path.open("r", newline="") as handle:
+-        reader = csv.DictReader(handle)
+-        if reader.fieldnames is None:
+-            raise ValueError("CSV is missing header fields.")
+-        data = {field: [] for field in reader.fieldnames}
+-        for row in reader:
+-            for field in reader.fieldnames:
+-                value = row.get(field, "")
+-                data[field].append(float(value))
+-    return {key: np.asarray(vals, dtype=float) for key, vals in data.items()}
+-
+-
+-def main() -> None:
+-    args = parse_args()
+-    csv_path = Path(args.csv)
+-    out_path = Path(args.out) if args.out else csv_path.parent / "learning_curves.png"
+-
+-    data = load_csv(csv_path)
+-    iters = data.get("iter", np.arange(len(next(iter(data.values())))))
+-
+-    fig, axes = plt.subplots(2, 3, figsize=(12, 7))
+-    axes = axes.flatten()
+-
+-    ax0 = axes[0]
+-    if "td_loss" in data:
+-        ax0.plot(iters, data["td_loss"], linewidth=1.5, label="TD Loss")
+-    ax0.set_title("TD Loss + Stability")
+-    ax0.set_xlabel("iter")
+-    ax0.grid(alpha=0.3)
+-
+-    if "stability_proxy" in data:
+-        ax1 = ax0.twinx()
+-        ax1.plot(iters, data["stability_proxy"], linewidth=1.2, color="tab:orange", label="Stability Proxy")
+-        ax1.axhline(1.0, color="tab:red", linestyle="--", linewidth=1.0, label="Stability=1")
+-        ax1.set_ylabel("stability")
+-        handles, labels = ax0.get_legend_handles_labels()
+-        handles2, labels2 = ax1.get_legend_handles_labels()
+-        ax0.legend(handles + handles2, labels + labels2, loc="upper right", fontsize=8)
+-    else:
+-        ax0.legend(loc="upper right", fontsize=8)
+-
+-    plot_axes = axes[1:]
+-    candidates = [
+-        ("critic_teacher_error", "Critic Teacher Error"),
+-        ("tracking_gap", "Tracking Gap"),
+-        ("mean_rho2", "Mean rho^2"),
+-        ("w_norm", "Critic ||w||"),
+-        ("fixed_point_gap", "||w - w_sharp||"),
+-        ("dist_mmd2", "MMD^2(d_mu, d_pi)"),
+-    ]
+-    idx = 0
+-    for key, title in candidates:
+-        if key not in data:
+-            continue
+-        if idx >= len(plot_axes):
+-            break
+-        ax = plot_axes[idx]
+-        idx += 1
+-        ax.plot(iters, data[key], linewidth=1.5)
+-        ax.set_title(title)
+-        ax.set_xlabel("iter")
+-        ax.grid(alpha=0.3)
+-
+-    for ax in plot_axes[idx:]:
+-        ax.axis("off")
+-
+-    fig.tight_layout()
+-    fig.savefig(out_path, dpi=150)
+-    print(f"Saved plot to {out_path}")
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/scripts/run_train.py b/scripts/run_train.py
+index e0b06f9..64b42a7 100644
+--- a/scripts/run_train.py
++++ b/scripts/run_train.py
+@@ -21,6 +21,24 @@ def parse_args() -> argparse.Namespace:
+     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
+     parser.add_argument("--beta", type=float, default=None, help="Override tracking beta.")
+     parser.add_argument("--p-mix", type=float, default=None, help="Override environment p_mix.")
++    parser.add_argument("--alpha-w", type=float, default=None, help="Override critic step size.")
++    parser.add_argument("--alpha-pi", type=float, default=None, help="Override actor step size.")
++    parser.add_argument("--sigma-mu", type=float, default=None, help="Override behavior policy sigma.")
++    parser.add_argument("--sigma-pi", type=float, default=None, help="Override target policy sigma.")
++    parser.add_argument("--gamma", type=float, default=None, help="Override discount factor.")
++    parser.add_argument("--theta-radius", type=float, default=None, help="Override policy parameter radius.")
++    parser.add_argument("--outer-iters", type=int, default=None, help="Override outer training iterations.")
++    parser.add_argument("--rho-clip", type=float, default=None, help="Override rho clip upper bound.")
++    parser.add_argument("--disable-rho-clip", action="store_true", help="Disable rho clipping.")
++    parser.add_argument("--resume", action="store_true", help="Resume from latest checkpoint in output dir.")
++    parser.add_argument("--resume-from", type=str, default=None, help="Resume from explicit checkpoint path.")
++    parser.add_argument("--report-every", type=int, default=None, help="Generate partial run report every N iters.")
++    parser.add_argument(
++        "--report-every-seconds",
++        type=float,
++        default=None,
++        help="Generate partial run report every N seconds.",
++    )
+     return parser.parse_args()
+ 
+ 
+@@ -35,6 +53,32 @@ def main() -> None:
+         cfg["beta"] = args.beta
+     if args.p_mix is not None:
+         cfg.setdefault("env", {})["p_mix"] = args.p_mix
++    if args.alpha_w is not None:
++        cfg["alpha_w"] = args.alpha_w
++    if args.alpha_pi is not None:
++        cfg["alpha_pi"] = args.alpha_pi
++    if args.sigma_mu is not None:
++        cfg["sigma_mu"] = args.sigma_mu
++    if args.sigma_pi is not None:
++        cfg["sigma_pi"] = args.sigma_pi
++    if args.gamma is not None:
++        cfg["gamma"] = args.gamma
++    if args.theta_radius is not None:
++        cfg["theta_radius"] = args.theta_radius
++    if args.outer_iters is not None:
++        cfg["outer_iters"] = args.outer_iters
++    if args.rho_clip is not None:
++        cfg["rho_clip"] = args.rho_clip
++    if args.disable_rho_clip:
++        cfg["disable_rho_clip"] = True
++    if args.resume:
++        cfg["resume"] = True
++    if args.resume_from is not None:
++        cfg["resume_from"] = args.resume_from
++    if args.report_every is not None:
++        cfg["report_every"] = args.report_every
++    if args.report_every_seconds is not None:
++        cfg["report_every_seconds"] = args.report_every_seconds
+ 
+     result = train_unfixed_ac(cfg)
+     print(f"Training complete. Logs at {result['csv_path']}")
+diff --git a/scripts/run_train_py.md b/scripts/run_train_py.md
+deleted file mode 100644
+index e0b06f9..0000000
+--- a/scripts/run_train_py.md
++++ /dev/null
+@@ -1,44 +0,0 @@
+-#!/usr/bin/env python3
+-"""Run unfixed actor-critic training with config."""
+-
+-from __future__ import annotations
+-
+-import argparse
+-import sys
+-from pathlib import Path
+-
+-ROOT = Path(__file__).resolve().parents[1]
+-if str(ROOT) not in sys.path:
+-    sys.path.insert(0, str(ROOT))
+-
+-from tdrl_unfixed_ac.algos.train_unfixed_ac import load_train_config, train_unfixed_ac
+-
+-
+-def parse_args() -> argparse.Namespace:
+-    parser = argparse.ArgumentParser(description="Run unfixed actor-critic training.")
+-    parser.add_argument("--config", type=str, default=None, help="Path to training config yaml/json.")
+-    parser.add_argument("--output-dir", type=str, default=None, help="Override output directory.")
+-    parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
+-    parser.add_argument("--beta", type=float, default=None, help="Override tracking beta.")
+-    parser.add_argument("--p-mix", type=float, default=None, help="Override environment p_mix.")
+-    return parser.parse_args()
+-
+-
+-def main() -> None:
+-    args = parse_args()
+-    cfg = load_train_config(args.config)
+-    if args.output_dir is not None:
+-        cfg["output_dir"] = args.output_dir
+-    if args.seed is not None:
+-        cfg["seed"] = args.seed
+-    if args.beta is not None:
+-        cfg["beta"] = args.beta
+-    if args.p_mix is not None:
+-        cfg.setdefault("env", {})["p_mix"] = args.p_mix
+-
+-    result = train_unfixed_ac(cfg)
+-    print(f"Training complete. Logs at {result['csv_path']}")
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/scripts/smoke_rollout_py.md b/scripts/smoke_rollout_py.md
+deleted file mode 100644
+index edc7f0f..0000000
+--- a/scripts/smoke_rollout_py.md
++++ /dev/null
+@@ -1,81 +0,0 @@
+-#!/usr/bin/env python3
+-"""Simple rollout to exercise TorusGobletGhostEnv."""
+-
+-from __future__ import annotations
+-
+-import argparse
+-import sys
+-from pathlib import Path
+-
+-import numpy as np
+-
+-ROOT = Path(__file__).resolve().parents[1]
+-if str(ROOT) not in sys.path:
+-    sys.path.insert(0, str(ROOT))
+-
+-from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv, load_config
+-
+-
+-def parse_args() -> argparse.Namespace:
+-    parser = argparse.ArgumentParser(description="Smoke rollout for TorusGobletGhostEnv")
+-    parser.add_argument("--config", type=str, default=None, help="Path to config yaml/json")
+-    parser.add_argument("--steps", type=int, default=1000, help="Number of rollout steps")
+-    parser.add_argument("--seed", type=int, default=None, help="Seed for reset and actions")
+-    parser.add_argument("--render", action="store_true", help="Enable pygame rendering")
+-    parser.add_argument("--record", type=str, default=None, help="Path to gif/mp4 recording")
+-    parser.add_argument("--fps", type=int, default=30, help="Renderer fps")
+-    parser.add_argument("--no-window", action="store_true", help="Render offscreen only")
+-    return parser.parse_args()
+-
+-
+-def main() -> None:
+-    args = parse_args()
+-    cfg_path = Path(args.config) if args.config else None
+-    cfg = load_config(str(cfg_path)) if cfg_path else load_config()
+-
+-    env = TorusGobletGhostEnv(config=cfg)
+-    obs, info = env.reset(seed=args.seed)
+-
+-    rng = np.random.default_rng(args.seed if args.seed is not None else cfg.get("seed", None))
+-    renderer = None
+-    if args.render or args.record:
+-        from tdrl_unfixed_ac.envs.render import TorusRenderer
+-
+-        renderer = TorusRenderer(env, fps=args.fps, show=not args.no_window, record_path=args.record)
+-
+-    counts = {"caught": 0, "picked": 0, "restart": 0}
+-    rewards = []
+-    psi_norm_max = 0.0
+-    last_info = {}
+-
+-    for _ in range(args.steps):
+-        action = rng.normal(loc=0.0, scale=1.0, size=2)
+-        obs, reward, terminated, truncated, info = env.step(action)
+-        if renderer is not None:
+-            renderer.render(action=action)
+-        rewards.append(reward)
+-        counts["caught"] += int(info.get("caught", False))
+-        counts["picked"] += int(info.get("picked", False))
+-        counts["restart"] += int(info.get("restart", False))
+-        psi_norm_max = max(psi_norm_max, float(np.linalg.norm(info.get("psi", 0.0))))
+-        last_info = info
+-        if terminated or truncated:
+-            raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+-
+-    rewards_arr = np.asarray(rewards, dtype=float)
+-    print(f"Ran {args.steps} steps. Total reward: {rewards_arr.sum():.2f}")
+-    print(
+-        "Reward stats: mean {:.3f}, std {:.3f}, min {:.3f}, max {:.3f}".format(
+-            rewards_arr.mean(), rewards_arr.std(), rewards_arr.min(), rewards_arr.max()
+-        )
+-    )
+-    print(f"Max ||psi||: {psi_norm_max:.3f} (C_psi={env.c_psi:.3f})")
+-    if last_info.get("phi") is not None:
+-        print(f"Phi dim: {last_info['phi'].shape[0]}, reward_teacher: {last_info.get('reward_teacher', np.nan):.3f}")
+-    print(f"Caught events: {counts['caught']}, Goblets picked: {counts['picked']}, Restarts: {counts['restart']}")
+-    if renderer is not None:
+-        renderer.close()
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/tdrl_unfixed_ac/__init___py.md b/tdrl_unfixed_ac/__init___py.md
+deleted file mode 100644
+index 160eb07..0000000
+--- a/tdrl_unfixed_ac/__init___py.md
++++ /dev/null
+@@ -1,7 +0,0 @@
+-"""
+-TDRL unfixed AC package.
+-
+-This package hosts a continuing-control torus Goblet&Ghost environment and
+-supporting utilities.
+-"""
+-
+diff --git a/tdrl_unfixed_ac/algos/__init___py.md b/tdrl_unfixed_ac/algos/__init___py.md
+deleted file mode 100644
+index 2dce1d3..0000000
+--- a/tdrl_unfixed_ac/algos/__init___py.md
++++ /dev/null
+@@ -1,5 +0,0 @@
+-"""Algorithm modules for unfixed actor-critic."""
+-
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, critic_value, importance_ratio, project_to_ball
+-
+-__all__ = ["LinearGaussianPolicy", "critic_value", "importance_ratio", "project_to_ball"]
+diff --git a/tdrl_unfixed_ac/algos/train_unfixed_ac.py b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+index c21171e..fd221c2 100644
+--- a/tdrl_unfixed_ac/algos/train_unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/train_unfixed_ac.py
+@@ -4,15 +4,23 @@ from __future__ import annotations
+ 
+ import csv
+ import json
++import time
++import traceback
+ from copy import deepcopy
+ from pathlib import Path
+ from typing import Any, Dict, Optional
+ 
+ import numpy as np
+ 
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, critic_value, project_to_ball
++from tdrl_unfixed_ac.algos.unfixed_ac import (
++    LinearGaussianPolicy,
++    apply_rho_clip,
++    critic_value,
++    project_to_ball,
++)
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv, load_config as load_env_config
+ from tdrl_unfixed_ac.probes import ProbeManager
++from tdrl_unfixed_ac.reporting import generate_run_report
+ from tdrl_unfixed_ac.utils.seeding import Seeder
+ 
+ try:
+@@ -37,9 +45,15 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+     "theta_radius": 4.0,
+     "theta_init_scale": 0.1,
+     "w_init_scale": 0.1,
++    "rho_clip": None,
++    "disable_rho_clip": False,
+     "checkpoint_every": 5,
+     "log_every": 1,
++    "report_every": 0,
++    "report_every_seconds": 0,
+     "output_dir": "outputs/unfixed_ac",
++    "resume": False,
++    "resume_from": None,
+     "env_config_path": None,
+     "env": {},
+     "probes": {
+@@ -67,6 +81,11 @@ DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+             "enabled": True,
+             "num_samples": 512,
+         },
++        "q_kernel": {
++            "enabled": False,
++            "batch_size": 8,
++            "max_horizon": 200,
++        },
+     },
+ }
+ 
+@@ -95,10 +114,9 @@ def load_train_config(path: Optional[str] = None) -> Dict[str, Any]:
+ 
+ 
+ def _clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    norm = float(np.linalg.norm(action))
+-    if norm > v_max and norm > 0.0:
+-        return action / norm * v_max
+-    return action
++    if v_max <= 0.0:
++        return action
++    return np.clip(action, -v_max, v_max)
+ 
+ 
+ def _mc_bar_phi(
+@@ -113,7 +131,6 @@ def _mc_bar_phi(
+     phis = []
+     for _ in range(k_mc):
+         action = policy.sample_action(psi, rng)
+-        action = _clip_action(action, env.v_max)
+         phi = env.compute_features(action)["phi"]
+         phis.append(phi)
+     return np.mean(np.stack(phis, axis=0), axis=0)
+@@ -127,6 +144,37 @@ def _json_ready(obj: Any) -> Any:
+     return obj
+ 
+ 
++def _save_checkpoint(path: Path, **payload: Any) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with path.open("wb") as handle:
++        np.savez(handle, **payload)
++
++
++def _load_checkpoint(path: Path) -> Dict[str, Any]:
++    with np.load(path, allow_pickle=True) as data:
++        return {key: data[key] for key in data.files}
++
++
++def _load_existing_logs(csv_path: Path) -> list[Dict[str, Any]]:
++    if not csv_path.exists():
++        return []
++    with csv_path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        return list(reader)
++
++
++def _last_logged_iter(logs: list[Dict[str, Any]]) -> Optional[int]:
++    for row in reversed(logs):
++        raw = row.get("iter")
++        if raw is None or str(raw).strip() == "":
++            continue
++        try:
++            return int(float(raw))
++        except ValueError:
++            continue
++    return None
++
++
+ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     cfg = deepcopy(config)
+     seed = int(cfg.get("seed", 0))
+@@ -143,168 +191,368 @@ def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+     theta_radius = float(cfg.get("theta_radius", 0.0))
+     theta_init_scale = float(cfg.get("theta_init_scale", 0.1))
+     w_init_scale = float(cfg.get("w_init_scale", 0.1))
++    rho_clip = cfg.get("rho_clip", None)
++    disable_rho_clip = bool(cfg.get("disable_rho_clip", False))
+     checkpoint_every = int(cfg.get("checkpoint_every", 0))
+     log_every = int(cfg.get("log_every", 1))
++    report_every = int(cfg.get("report_every", 0) or 0)
++    report_every_seconds = float(cfg.get("report_every_seconds", 0) or 0.0)
+     output_dir = Path(cfg.get("output_dir", "outputs/unfixed_ac"))
+-
+-    env_cfg_path = cfg.get("env_config_path", None)
+-    env_cfg = load_env_config(env_cfg_path) if env_cfg_path else load_env_config()
+-    env_cfg.update(cfg.get("env", {}))
+-    if env_cfg.get("seed") is None:
+-        env_cfg["seed"] = seed
+-    env = TorusGobletGhostEnv(config=env_cfg)
+-
+-    seeder = Seeder(seed)
+-    init_rng = seeder.spawn()
+-    rollout_rng = seeder.spawn()
+-
+-    action_dim = int(env.critic_features_map.action_dim)
+-    actor_dim = int(env.actor_feature_dim)
+-    feature_dim = int(env.feature_dim)
+-
+-    theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
+-    theta_mu = np.array(theta_pi, copy=True)
+-    w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
+-
+-    teacher_w = np.array(env.teacher_reward.w_R, copy=True)
++    resume = bool(cfg.get("resume", False))
++    resume_from = cfg.get("resume_from", None)
++    total_steps = max(trajectories * horizon, 1)
++    train_step_scale = alpha_w / total_steps
+ 
+     output_dir.mkdir(parents=True, exist_ok=True)
+     checkpoint_dir = output_dir / "checkpoints"
+     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+-
+-    probe_manager = ProbeManager(
+-        cfg.get("probes", {}),
+-        output_dir=output_dir,
+-        env_config=env_cfg,
+-        seed=seed,
+-        alpha_w=alpha_w,
+-        gamma=gamma,
+-        k_mc=k_mc,
+-        sigma_mu=sigma_mu,
+-        sigma_pi=sigma_pi,
+-    )
+-    probe_defaults = probe_manager.log_defaults()
+-
+-    with (output_dir / "config.json").open("w") as handle:
+-        json.dump({k: _json_ready(v) for k, v in cfg.items()}, handle, indent=2)
+-
+-    logs = []
+-    total_steps = max(trajectories * horizon, 1)
+-    seed_max = np.iinfo(np.int32).max
+-
+-    for n in range(outer_iters):
+-        mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu)
+-        pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi)
+-
+-        grad_w = np.zeros_like(w)
+-        grad_theta = np.zeros_like(theta_pi)
+-        td_errors = []
+-        rho_sq = []
+-
+-        for _ in range(trajectories):
+-            env.reset(seed=int(rollout_rng.integers(0, seed_max)))
+-            zero_action = np.zeros(2, dtype=float)
+-            feat0 = env.compute_features(zero_action)
+-            psi = feat0["psi"]
+-            for _ in range(horizon):
+-                # ---- sample action from behavior policy mu ----
+-                a = mu_policy.sample_action(psi, rollout_rng)
+-                a = _clip_action(a, env.v_max)  # keep consistent with env._clip_action
+-
+-                # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
+-                logp_pi = pi_policy.log_prob(a, psi)
+-                logp_mu = mu_policy.log_prob(a, psi)
+-                rho = float(np.exp(logp_pi - logp_mu))
+-
+-                # ---- step env (reward + phi are consistent via info["phi"]) ----
+-                obs, reward, terminated, truncated, info = env.step(a)
+-
+-                phi = info["phi"]  # phi(s_t, a_t) used for reward + TD
+-                psi_next = info["psi_next"]  # psi(s_{t+1})
+-
+-                # ---- compute bar_phi(s_{t+1}) = E_{a'~pi}[phi(s_{t+1},a')] ----
+-                bar_phi = _mc_bar_phi(env, pi_policy, psi_next, rollout_rng, k_mc=k_mc)
+-
+-                # ---- TD error ----
+-                q_sa = critic_value(w, phi)
+-                q_next = critic_value(w, bar_phi)
+-                delta = float(reward + gamma * q_next - q_sa)
+-
+-                # ---- actor score grad (target policy) ----
+-                g = pi_policy.score(a, psi)  # grad_theta log pi(a|s)
+-
+-                # ---- accumulate gradients ----
+-                grad_w += rho * delta * phi
+-                grad_theta += rho * delta * g
+-
+-                td_errors.append(delta)
+-                rho_sq.append(rho * rho)
+-
+-                # advance
+-                psi = psi_next
+-                if terminated or truncated:
+-                    break
+-
+-        scale = 1.0 / total_steps
+-        w = w + alpha_w * scale * grad_w
+-        theta_pi = theta_pi + alpha_pi * scale * grad_theta
+-        theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
+-
+-        theta_pi = project_to_ball(theta_pi, theta_radius)
+-        theta_mu = project_to_ball(theta_mu, theta_radius)
+-
+-        td_loss = float(np.mean(np.square(td_errors))) if td_errors else float("nan")
+-        critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
+-        tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
+-        mean_rho2 = float(np.mean(rho_sq)) if rho_sq else float("nan")
+-        w_norm = float(np.linalg.norm(w))
+-
+-        log_row = {
+-            "iter": n,
+-            "td_loss": td_loss,
+-            "critic_teacher_error": critic_teacher_error,
+-            "tracking_gap": tracking_gap,
+-            "mean_rho2": mean_rho2,
+-            "w_norm": w_norm,
+-            **probe_defaults,
+-        }
+-        probe_updates = probe_manager.maybe_run(
+-            iteration=n, td_loss=td_loss, w=w, theta_mu=theta_mu, theta_pi=theta_pi
++    csv_path = output_dir / "learning_curves.csv"
++    exception: Optional[str] = None
++
++    csv_handle = None
++    try:
++        env_cfg_path = cfg.get("env_config_path", None)
++        env_cfg = load_env_config(env_cfg_path) if env_cfg_path else load_env_config()
++        env_cfg.update(cfg.get("env", {}))
++        if env_cfg.get("seed") is None:
++            env_cfg["seed"] = seed
++        env = TorusGobletGhostEnv(config=env_cfg)
++
++        seeder = Seeder(seed)
++        init_rng = seeder.spawn()
++        rollout_rng = seeder.spawn()
++
++        action_dim = int(env.critic_features_map.action_dim)
++        actor_dim = int(env.actor_feature_dim)
++        feature_dim = int(env.feature_dim)
++
++        theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
++        theta_mu = np.array(theta_pi, copy=True)
++        w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
++
++        logs = _load_existing_logs(csv_path)
++        last_logged = _last_logged_iter(logs)
++        start_iter = 0
++        resume_path = Path(resume_from) if resume_from else None
++        if resume_path is None and resume:
++            resume_path = checkpoint_dir / "latest.pt"
++        if resume_path and resume_path.exists():
++            ckpt = _load_checkpoint(resume_path)
++            theta_mu = np.array(ckpt.get("theta_mu", theta_mu), copy=True)
++            theta_pi = np.array(ckpt.get("theta_pi", theta_pi), copy=True)
++            w = np.array(ckpt.get("w", w), copy=True)
++            ckpt_iter = ckpt.get("iter")
++            if ckpt_iter is not None:
++                try:
++                    start_iter = int(ckpt_iter) + 1
++                except (TypeError, ValueError):
++                    start_iter = 0
++            print(f"Resuming from checkpoint: {resume_path}")
++        if last_logged is not None:
++            start_iter = max(start_iter, last_logged + 1)
++
++        teacher_w = np.array(env.teacher_reward.w_R, copy=True)
++
++        probe_manager = ProbeManager(
++            cfg.get("probes", {}),
++            output_dir=output_dir,
++            env_config=env_cfg,
++            seed=seed,
++            alpha_w=alpha_w,
++            train_step_scale=train_step_scale,
++            gamma=gamma,
++            k_mc=k_mc,
++            sigma_mu=sigma_mu,
++            sigma_pi=sigma_pi,
++            rho_clip=rho_clip,
++            disable_rho_clip=disable_rho_clip,
+         )
+-        if probe_updates:
+-            log_row.update(probe_updates)
+-        logs.append(log_row)
+-
+-        if log_every > 0 and (n % log_every == 0):
+-            print(
+-                "iter {:03d} | td_loss {:.4f} | teacher_err {:.4f} | gap {:.4f} | rho2 {:.4f} | w_norm {:.3f}".format(
+-                    n, td_loss, critic_teacher_error, tracking_gap, mean_rho2, w_norm
+-                )
+-            )
+-
+-        if checkpoint_every > 0 and (n + 1) % checkpoint_every == 0:
+-            np.savez(
+-                checkpoint_dir / f"iter_{n:04d}.npz",
++        probe_defaults = probe_manager.log_defaults()
++
++        with (output_dir / "config.json").open("w") as handle:
++            json.dump({k: _json_ready(v) for k, v in cfg.items()}, handle, indent=2)
++
++        csv_fieldnames = None
++        csv_writer = None
++        if csv_path.exists():
++            with csv_path.open("r", newline="") as handle:
++                reader = csv.DictReader(handle)
++                csv_fieldnames = reader.fieldnames
++            if csv_fieldnames:
++                csv_handle = csv_path.open("a", newline="")
++                csv_writer = csv.DictWriter(csv_handle, fieldnames=csv_fieldnames)
++
++        seed_max = np.iinfo(np.int32).max
++        last_report_time = time.time()
++
++        for n in range(start_iter, outer_iters):
++            mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu, v_max=env.v_max)
++            pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi, v_max=env.v_max)
++
++            grad_w = np.zeros_like(w)
++            grad_theta = np.zeros_like(theta_pi)
++            td_errors = []
++            rho_vals = []
++            rho_raw_vals = []
++            rho_exec_vals = []
++            a_diff_vals = []
++            clip_count = 0
++
++            delta_cache = None
++            if probe_manager.enabled and probe_manager.q_kernel_enabled:
++                b_cache = probe_manager.q_kernel_batch_size
++                t_cache = min(probe_manager.q_kernel_max_horizon, horizon)
++                delta_cache = np.full((b_cache, t_cache), np.nan, dtype=float)
++
++            for traj_idx in range(trajectories):
++                env.reset(seed=int(rollout_rng.integers(0, seed_max)))
++                zero_action = np.zeros(2, dtype=float)
++                feat0 = env.compute_features(zero_action)
++                psi = feat0["psi"]
++                for t_idx in range(horizon):
++                    # ---- sample action from behavior policy mu ----
++                    a_exec = mu_policy.sample_action(psi, rollout_rng)
++                    a_clip = _clip_action(a_exec, env.v_max)
++                    a_diff = float(np.linalg.norm(a_exec - a_clip))
++                    a_diff_vals.append(a_diff)
++                    if a_diff > 1e-12:
++                        clip_count += 1
++
++                    # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
++                    u_exec = mu_policy.pre_squash(a_exec)
++                    logp_pi_raw = pi_policy.log_prob_pre_squash(u_exec, psi)
++                    logp_mu_raw = mu_policy.log_prob_pre_squash(u_exec, psi)
++                    rho_raw = float(np.exp(logp_pi_raw - logp_mu_raw))
++
++                    logp_pi_exec = pi_policy.log_prob(a_exec, psi)
++                    logp_mu_exec = mu_policy.log_prob(a_exec, psi)
++                    rho_exec = float(np.exp(logp_pi_exec - logp_mu_exec))
++                    rho = apply_rho_clip(rho_exec, rho_clip, disable=disable_rho_clip)
++
++                    # ---- step env (reward + phi are consistent via info["phi"]) ----
++                    obs, reward, terminated, truncated, info = env.step(a_exec)
++
++                    phi = info["phi"]  # phi(s_t, a_t) used for reward + TD
++                    psi_next = info["psi_next"]  # psi(s_{t+1})
++
++                    # ---- compute bar_phi(s_{t+1}) = E_{a'~pi}[phi(s_{t+1},a')] ----
++                    bar_phi = _mc_bar_phi(env, pi_policy, psi_next, rollout_rng, k_mc=k_mc)
++
++                    # ---- TD error ----
++                    q_sa = critic_value(w, phi)
++                    q_next = critic_value(w, bar_phi)
++                    delta = float(reward + gamma * q_next - q_sa)
++
++                    # ---- actor score grad (target policy) ----
++                    g = pi_policy.score(a_exec, psi)  # grad_theta log pi(a|s)
++
++                    # ---- accumulate gradients ----
++                    grad_w += rho * delta * phi
++                    grad_theta += rho * delta * g
++
++                    td_errors.append(delta)
++                    rho_vals.append(rho)
++                    rho_raw_vals.append(rho_raw)
++                    rho_exec_vals.append(rho_exec)
++                    if delta_cache is not None and traj_idx < delta_cache.shape[0] and t_idx < delta_cache.shape[1]:
++                        delta_cache[traj_idx, t_idx] = delta
++
++                    # advance
++                    psi = psi_next
++                    if terminated or truncated:
++                        break
++
++            w_prev = np.array(w, copy=True)
++            theta_pi_prev = np.array(theta_pi, copy=True)
++
++            scale = 1.0 / total_steps
++            w = w + alpha_w * scale * grad_w
++            theta_pi = theta_pi + alpha_pi * scale * grad_theta
++            theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
++
++            theta_pi = project_to_ball(theta_pi, theta_radius)
++            theta_mu = project_to_ball(theta_mu, theta_radius)
++            delta_theta_pi_norm = float(np.linalg.norm(theta_pi - theta_pi_prev))
++            delta_w_norm = float(np.linalg.norm(w - w_prev))
++
++            td_loss = float(np.mean(np.square(td_errors))) if td_errors else float("nan")
++            if rho_vals:
++                rho_arr = np.asarray(rho_vals, dtype=float)
++                rho2_arr = rho_arr * rho_arr
++                mean_rho = float(np.mean(rho_arr))
++                mean_rho2 = float(np.mean(rho2_arr))
++                min_rho = float(np.min(rho_arr))
++                max_rho = float(np.max(rho_arr))
++                p95_rho = float(np.quantile(rho_arr, 0.95))
++                p99_rho = float(np.quantile(rho_arr, 0.99))
++                p95_rho2 = float(np.quantile(rho2_arr, 0.95))
++                p99_rho2 = float(np.quantile(rho2_arr, 0.99))
++                max_rho2 = float(np.max(rho2_arr))
++            else:
++                mean_rho = float("nan")
++                mean_rho2 = float("nan")
++                min_rho = float("nan")
++                max_rho = float("nan")
++                p95_rho = float("nan")
++                p99_rho = float("nan")
++                p95_rho2 = float("nan")
++                p99_rho2 = float("nan")
++                max_rho2 = float("nan")
++
++            if rho_raw_vals:
++                rho_raw_arr = np.asarray(rho_raw_vals, dtype=float)
++                mean_rho_raw = float(np.mean(rho_raw_arr))
++                mean_rho2_raw = float(np.mean(rho_raw_arr * rho_raw_arr))
++            else:
++                mean_rho_raw = float("nan")
++                mean_rho2_raw = float("nan")
++
++            if rho_exec_vals:
++                rho_exec_arr = np.asarray(rho_exec_vals, dtype=float)
++                mean_rho_exec = float(np.mean(rho_exec_arr))
++                mean_rho2_exec = float(np.mean(rho_exec_arr * rho_exec_arr))
++            else:
++                mean_rho_exec = float("nan")
++                mean_rho2_exec = float("nan")
++
++            if td_errors:
++                delta_arr = np.asarray(td_errors, dtype=float)
++                delta_mean = float(np.mean(delta_arr))
++                delta_std = float(np.std(delta_arr))
++                delta_p95 = float(np.quantile(delta_arr, 0.95))
++                delta_p99 = float(np.quantile(delta_arr, 0.99))
++                delta_max = float(np.max(delta_arr))
++            else:
++                delta_mean = float("nan")
++                delta_std = float("nan")
++                delta_p95 = float("nan")
++                delta_p99 = float("nan")
++                delta_max = float("nan")
++
++            if a_diff_vals:
++                diff_arr = np.asarray(a_diff_vals, dtype=float)
++                mean_abs_a_diff = float(np.mean(diff_arr))
++                p95_abs_a_diff = float(np.quantile(diff_arr, 0.95))
++                max_abs_a_diff = float(np.max(diff_arr))
++                clip_fraction = float(clip_count / diff_arr.size)
++            else:
++                mean_abs_a_diff = float("nan")
++                p95_abs_a_diff = float("nan")
++                max_abs_a_diff = float("nan")
++                clip_fraction = float("nan")
++            critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
++            tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
++            w_norm = float(np.linalg.norm(w))
++
++            log_row = {
++                "iter": n,
++                "td_loss": td_loss,
++                "critic_teacher_error": critic_teacher_error,
++                "tracking_gap": tracking_gap,
++                "mean_rho": mean_rho,
++                "mean_rho2": mean_rho2,
++                "mean_rho_raw": mean_rho_raw,
++                "mean_rho2_raw": mean_rho2_raw,
++                "mean_rho_exec": mean_rho_exec,
++                "mean_rho2_exec": mean_rho2_exec,
++                "min_rho": min_rho,
++                "max_rho": max_rho,
++                "p95_rho": p95_rho,
++                "p99_rho": p99_rho,
++                "p95_rho2": p95_rho2,
++                "p99_rho2": p99_rho2,
++                "max_rho2": max_rho2,
++                "clip_fraction": clip_fraction,
++                "mean_abs_a_diff": mean_abs_a_diff,
++                "p95_abs_a_diff": p95_abs_a_diff,
++                "max_abs_a_diff": max_abs_a_diff,
++                "delta_mean": delta_mean,
++                "delta_std": delta_std,
++                "delta_p95": delta_p95,
++                "delta_p99": delta_p99,
++                "delta_max": delta_max,
++                "w_norm": w_norm,
++                "delta_theta_pi_norm": delta_theta_pi_norm,
++                "delta_w_norm": delta_w_norm,
++                **probe_defaults,
++            }
++            probe_updates = probe_manager.maybe_run(
++                iteration=n,
++                td_loss=td_loss,
++                w=w,
+                 theta_mu=theta_mu,
+                 theta_pi=theta_pi,
+-                w=w,
+-                iter=n,
++                delta_cache=delta_cache,
+             )
++            if probe_updates:
++                log_row.update(probe_updates)
++            logs.append(log_row)
++            if csv_writer is None:
++                csv_fieldnames = list(log_row.keys())
++                csv_handle = csv_path.open("w", newline="")
++                csv_writer = csv.DictWriter(csv_handle, fieldnames=csv_fieldnames)
++                csv_writer.writeheader()
++            csv_writer.writerow(log_row)
++            csv_handle.flush()
++
++            if log_every > 0 and (n % log_every == 0):
++                print(
++                    "iter {:03d} | td_loss {:.4f} | teacher_err {:.4f} | gap {:.4f} | rho2 {:.4f} | w_norm {:.3f}".format(
++                        n, td_loss, critic_teacher_error, tracking_gap, mean_rho2, w_norm
++                    )
++                )
+ 
+-    csv_path = output_dir / "learning_curves.csv"
+-    with csv_path.open("w", newline="") as handle:
+-        fieldnames = list(logs[0].keys()) if logs else []
+-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+-        writer.writeheader()
+-        for row in logs:
+-            writer.writerow(row)
+-
+-    np.savez(
+-        checkpoint_dir / "final.npz",
+-        theta_mu=theta_mu,
+-        theta_pi=theta_pi,
+-        w=w,
+-        iter=outer_iters - 1,
+-    )
+-
+-    return {"output_dir": str(output_dir), "csv_path": str(csv_path), "logs": logs}
++            if checkpoint_every > 0 and (n + 1) % checkpoint_every == 0:
++                payload = {"theta_mu": theta_mu, "theta_pi": theta_pi, "w": w, "iter": n}
++                _save_checkpoint(checkpoint_dir / f"iter_{n:04d}.npz", **payload)
++                _save_checkpoint(checkpoint_dir / "latest.pt", **payload)
++
++            should_report = False
++            if report_every > 0 and (n + 1) % report_every == 0:
++                should_report = True
++            if report_every_seconds > 0 and (time.time() - last_report_time) >= report_every_seconds:
++                should_report = True
++            if should_report:
++                try:
++                    generate_run_report(
++                        run_dir=output_dir,
++                        config=cfg,
++                        curves_csv=csv_path,
++                        probes_dir=output_dir / "probes",
++                        stdout_log_path=output_dir / "stdout.log",
++                        incomplete=True,
++                        exception=None,
++                    )
++                    last_report_time = time.time()
++                except Exception:
++                    print("Failed to generate periodic run report.")
++                    traceback.print_exc()
++
++        payload = {"theta_mu": theta_mu, "theta_pi": theta_pi, "w": w, "iter": outer_iters - 1}
++        _save_checkpoint(checkpoint_dir / "final.npz", **payload)
++        _save_checkpoint(checkpoint_dir / "latest.pt", **payload)
++
++        if csv_handle is not None:
++            csv_handle.close()
++
++        return {"output_dir": str(output_dir), "csv_path": str(csv_path), "logs": logs}
++    except Exception:
++        exception = traceback.format_exc()
++        raise
++    finally:
++        try:
++            generate_run_report(
++                run_dir=output_dir,
++                config=cfg,
++                curves_csv=csv_path,
++                probes_dir=output_dir / "probes",
++                stdout_log_path=output_dir / "stdout.log",
++                incomplete=exception is not None,
++                exception=exception,
++            )
++        except Exception:
++            print("Failed to generate run report.")
++            traceback.print_exc()
++        finally:
++            if csv_handle is not None:
++                csv_handle.close()
+diff --git a/tdrl_unfixed_ac/algos/train_unfixed_ac_py.md b/tdrl_unfixed_ac/algos/train_unfixed_ac_py.md
+deleted file mode 100644
+index 629945b..0000000
+--- a/tdrl_unfixed_ac/algos/train_unfixed_ac_py.md
++++ /dev/null
+@@ -1,296 +0,0 @@
+-"""Training loop for unfixed actor-critic."""
+-
+-from __future__ import annotations
+-
+-import csv
+-import json
+-from copy import deepcopy
+-from pathlib import Path
+-from typing import Any, Dict, Optional
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, critic_value, importance_ratio, project_to_ball
+-from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv, load_config as load_env_config
+-from tdrl_unfixed_ac.probes import ProbeManager
+-from tdrl_unfixed_ac.utils.seeding import Seeder
+-
+-try:
+-    import yaml  # type: ignore
+-except Exception:  # pragma: no cover - optional dependency
+-    yaml = None
+-
+-DEFAULT_TRAIN_CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "train_unfixed_ac.yaml"
+-
+-DEFAULT_TRAIN_CONFIG: Dict[str, Any] = {
+-    "seed": 0,
+-    "outer_iters": 50,
+-    "trajectories": 6,
+-    "horizon": 200,
+-    "gamma": 0.95,
+-    "alpha_w": 0.2,
+-    "alpha_pi": 0.1,
+-    "beta": 0.2,
+-    "sigma_mu": 0.2,
+-    "sigma_pi": 0.2,
+-    "K_mc": 4,
+-    "theta_radius": 4.0,
+-    "theta_init_scale": 0.1,
+-    "w_init_scale": 0.1,
+-    "checkpoint_every": 5,
+-    "log_every": 1,
+-    "output_dir": "outputs/unfixed_ac",
+-    "env_config_path": None,
+-    "env": {},
+-    "probes": {
+-        "enabled": False,
+-        "every": 0,
+-        "plateau": {
+-            "enabled": False,
+-            "window": 5,
+-            "tol": 1e-3,
+-            "cooldown": 5,
+-            "min_iter": 5,
+-        },
+-        "fixed_point": {
+-            "enabled": True,
+-            "batch_size": 4096,
+-            "max_iters": 200,
+-            "tol": 1e-4,
+-        },
+-        "stability": {
+-            "enabled": True,
+-            "batch_size": 4096,
+-            "power_iters": 20,
+-        },
+-        "distribution": {
+-            "enabled": True,
+-            "num_samples": 512,
+-        },
+-    },
+-}
+-
+-
+-def _deep_update(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+-    for key, value in updates.items():
+-        if isinstance(value, dict) and isinstance(base.get(key), dict):
+-            _deep_update(base[key], value)
+-        else:
+-            base[key] = value
+-    return base
+-
+-
+-def load_train_config(path: Optional[str] = None) -> Dict[str, Any]:
+-    """Load training config from JSON/YAML file with defaults."""
+-    config = deepcopy(DEFAULT_TRAIN_CONFIG)
+-    if path is None and DEFAULT_TRAIN_CONFIG_PATH.exists():
+-        path = str(DEFAULT_TRAIN_CONFIG_PATH)
+-    if path is None:
+-        return config
+-    text = Path(path).read_text()
+-    payload = yaml.safe_load(text) if yaml is not None else json.loads(text)
+-    if payload:
+-        _deep_update(config, payload)
+-    return config
+-
+-
+-def _clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    norm = float(np.linalg.norm(action))
+-    if norm > v_max and norm > 0.0:
+-        return action / norm * v_max
+-    return action
+-
+-
+-def _mc_bar_phi(
+-    env: TorusGobletGhostEnv,
+-    policy: LinearGaussianPolicy,
+-    psi: np.ndarray,
+-    rng: np.random.Generator,
+-    k_mc: int,
+-) -> np.ndarray:
+-    if k_mc <= 0:
+-        return env.compute_features(np.zeros(policy.action_dim, dtype=float))["phi"]
+-    phis = []
+-    for _ in range(k_mc):
+-        action = policy.sample_action(psi, rng)
+-        action = _clip_action(action, env.v_max)
+-        phi = env.compute_features(action)["phi"]
+-        phis.append(phi)
+-    return np.mean(np.stack(phis, axis=0), axis=0)
+-
+-
+-def _json_ready(obj: Any) -> Any:
+-    if isinstance(obj, np.ndarray):
+-        return obj.tolist()
+-    if isinstance(obj, (np.integer, np.floating)):
+-        return obj.item()
+-    return obj
+-
+-
+-def train_unfixed_ac(config: Dict[str, Any]) -> Dict[str, Any]:
+-    cfg = deepcopy(config)
+-    seed = int(cfg.get("seed", 0))
+-    outer_iters = int(cfg.get("outer_iters", 1))
+-    trajectories = int(cfg.get("trajectories", 1))
+-    horizon = int(cfg.get("horizon", 1))
+-    gamma = float(cfg.get("gamma", 0.0))
+-    alpha_w = float(cfg.get("alpha_w", 0.0))
+-    alpha_pi = float(cfg.get("alpha_pi", 0.0))
+-    beta = float(cfg.get("beta", 0.0))
+-    sigma_mu = float(cfg.get("sigma_mu", 1.0))
+-    sigma_pi = float(cfg.get("sigma_pi", 1.0))
+-    k_mc = int(cfg.get("K_mc", 1))
+-    theta_radius = float(cfg.get("theta_radius", 0.0))
+-    theta_init_scale = float(cfg.get("theta_init_scale", 0.1))
+-    w_init_scale = float(cfg.get("w_init_scale", 0.1))
+-    checkpoint_every = int(cfg.get("checkpoint_every", 0))
+-    log_every = int(cfg.get("log_every", 1))
+-    output_dir = Path(cfg.get("output_dir", "outputs/unfixed_ac"))
+-
+-    env_cfg_path = cfg.get("env_config_path", None)
+-    env_cfg = load_env_config(env_cfg_path) if env_cfg_path else load_env_config()
+-    env_cfg.update(cfg.get("env", {}))
+-    if env_cfg.get("seed") is None:
+-        env_cfg["seed"] = seed
+-    env = TorusGobletGhostEnv(config=env_cfg)
+-
+-    seeder = Seeder(seed)
+-    init_rng = seeder.spawn()
+-    rollout_rng = seeder.spawn()
+-
+-    action_dim = int(env.critic_features_map.action_dim)
+-    actor_dim = int(env.actor_feature_dim)
+-    feature_dim = int(env.feature_dim)
+-
+-    theta_pi = init_rng.normal(loc=0.0, scale=theta_init_scale, size=(actor_dim, action_dim))
+-    theta_mu = np.array(theta_pi, copy=True)
+-    w = init_rng.normal(loc=0.0, scale=w_init_scale, size=feature_dim)
+-
+-    teacher_w = np.array(env.teacher_reward.w_R, copy=True)
+-
+-    output_dir.mkdir(parents=True, exist_ok=True)
+-    checkpoint_dir = output_dir / "checkpoints"
+-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+-
+-    probe_manager = ProbeManager(
+-        cfg.get("probes", {}),
+-        output_dir=output_dir,
+-        env_config=env_cfg,
+-        seed=seed,
+-        alpha_w=alpha_w,
+-        gamma=gamma,
+-        k_mc=k_mc,
+-        sigma_mu=sigma_mu,
+-        sigma_pi=sigma_pi,
+-    )
+-    probe_defaults = probe_manager.log_defaults()
+-
+-    with (output_dir / "config.json").open("w") as handle:
+-        json.dump({k: _json_ready(v) for k, v in cfg.items()}, handle, indent=2)
+-
+-    logs = []
+-    total_steps = max(trajectories * horizon, 1)
+-    zero_action = np.zeros(action_dim, dtype=float)
+-    seed_max = np.iinfo(np.int32).max
+-
+-    for n in range(outer_iters):
+-        mu_policy = LinearGaussianPolicy(theta=theta_mu, sigma=sigma_mu)
+-        pi_policy = LinearGaussianPolicy(theta=theta_pi, sigma=sigma_pi)
+-
+-        grad_w = np.zeros_like(w)
+-        grad_theta = np.zeros_like(theta_pi)
+-        td_errors = []
+-        rho_sq = []
+-
+-        for _ in range(trajectories):
+-            env.reset(seed=int(rollout_rng.integers(0, seed_max)))
+-            for _ in range(horizon):
+-                psi = env.compute_features(zero_action)["psi"]
+-
+-                action = mu_policy.sample_action(psi, rollout_rng)
+-                action = _clip_action(action, env.v_max)
+-                phi = env.compute_features(action)["phi"]
+-
+-                logmu = mu_policy.log_prob(action, psi)
+-                logpi = pi_policy.log_prob(action, psi)
+-                rho = importance_ratio(logpi, logmu)
+-
+-                _, reward, terminated, truncated, _ = env.step(action)
+-                if terminated or truncated:
+-                    raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+-
+-                psi_next = env.compute_features(zero_action)["psi"]
+-                bar_phi = _mc_bar_phi(env, pi_policy, psi_next, rollout_rng, k_mc)
+-
+-                delta = reward + gamma * critic_value(w, bar_phi) - critic_value(w, phi)
+-                g = pi_policy.score(action, psi)
+-
+-                grad_w += rho * delta * phi
+-                grad_theta += rho * delta * g
+-
+-                td_errors.append(delta)
+-                rho_sq.append(rho * rho)
+-
+-        scale = 1.0 / total_steps
+-        w = w + alpha_w * scale * grad_w
+-        theta_pi = theta_pi + alpha_pi * scale * grad_theta
+-        theta_mu = (1.0 - beta) * theta_mu + beta * theta_pi
+-
+-        theta_pi = project_to_ball(theta_pi, theta_radius)
+-        theta_mu = project_to_ball(theta_mu, theta_radius)
+-
+-        td_loss = float(np.mean(np.square(td_errors))) if td_errors else float("nan")
+-        critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
+-        tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
+-        mean_rho2 = float(np.mean(rho_sq)) if rho_sq else float("nan")
+-        w_norm = float(np.linalg.norm(w))
+-
+-        log_row = {
+-            "iter": n,
+-            "td_loss": td_loss,
+-            "critic_teacher_error": critic_teacher_error,
+-            "tracking_gap": tracking_gap,
+-            "mean_rho2": mean_rho2,
+-            "w_norm": w_norm,
+-            **probe_defaults,
+-        }
+-        probe_updates = probe_manager.maybe_run(
+-            iteration=n, td_loss=td_loss, w=w, theta_mu=theta_mu, theta_pi=theta_pi
+-        )
+-        if probe_updates:
+-            log_row.update(probe_updates)
+-        logs.append(log_row)
+-
+-        if log_every > 0 and (n % log_every == 0):
+-            print(
+-                "iter {:03d} | td_loss {:.4f} | teacher_err {:.4f} | gap {:.4f} | rho2 {:.4f} | w_norm {:.3f}".format(
+-                    n, td_loss, critic_teacher_error, tracking_gap, mean_rho2, w_norm
+-                )
+-            )
+-
+-        if checkpoint_every > 0 and (n + 1) % checkpoint_every == 0:
+-            np.savez(
+-                checkpoint_dir / f"iter_{n:04d}.npz",
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                w=w,
+-                iter=n,
+-            )
+-
+-    csv_path = output_dir / "learning_curves.csv"
+-    with csv_path.open("w", newline="") as handle:
+-        fieldnames = list(logs[0].keys()) if logs else []
+-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+-        writer.writeheader()
+-        for row in logs:
+-            writer.writerow(row)
+-
+-    np.savez(
+-        checkpoint_dir / "final.npz",
+-        theta_mu=theta_mu,
+-        theta_pi=theta_pi,
+-        w=w,
+-        iter=outer_iters - 1,
+-    )
+-
+-    return {"output_dir": str(output_dir), "csv_path": str(csv_path), "logs": logs}
+diff --git a/tdrl_unfixed_ac/algos/unfixed_ac.py b/tdrl_unfixed_ac/algos/unfixed_ac.py
+index 45e32a3..ca85193 100644
+--- a/tdrl_unfixed_ac/algos/unfixed_ac.py
++++ b/tdrl_unfixed_ac/algos/unfixed_ac.py
+@@ -15,12 +15,35 @@ def policy_mean(theta: np.ndarray, psi: np.ndarray) -> np.ndarray:
+     return (theta.T @ psi) / np.sqrt(theta.shape[0])
+ 
+ 
++def _squash_action(u: np.ndarray, v_max: float) -> np.ndarray:
++    return v_max * np.tanh(u)
++
++
++def _unsquash_action(action: np.ndarray, v_max: float, eps: float = 1e-6) -> np.ndarray:
++    if v_max <= 0.0:
++        raise ValueError("v_max must be positive.")
++    scaled = np.clip(action / v_max, -1.0 + eps, 1.0 - eps)
++    return np.arctanh(scaled)
++
++
++def _log1m_tanh2(u: np.ndarray) -> np.ndarray:
++    return 2.0 * (np.log(2.0) - u - np.logaddexp(0.0, -2.0 * u))
++
++
++def _gaussian_log_prob(u: np.ndarray, mean: np.ndarray, sigma: float) -> float:
++    diff = u - mean
++    var = sigma * sigma
++    log_norm = -0.5 * diff.size * np.log(2.0 * np.pi * var)
++    return float(log_norm - 0.5 * np.dot(diff, diff) / var)
++
++
+ @dataclass
+ class LinearGaussianPolicy:
+     """Linear-Gaussian policy with diagonal covariance."""
+ 
+     theta: np.ndarray
+     sigma: float
++    v_max: float
+ 
+     def mean(self, psi: np.ndarray) -> np.ndarray:
+         return policy_mean(self.theta, psi)
+@@ -36,22 +59,33 @@ class LinearGaussianPolicy:
+     def sample_action(self, psi: np.ndarray, rng: Optional[np.random.Generator] = None) -> np.ndarray:
+         rng = rng if rng is not None else np.random.default_rng()
+         mean = self.mean(psi)
+-        return rng.normal(loc=mean, scale=self.sigma, size=self.action_dim)
++        u = rng.normal(loc=mean, scale=self.sigma, size=self.action_dim)
++        return _squash_action(u, self.v_max)
++
++    def pre_squash(self, action: np.ndarray) -> np.ndarray:
++        action = np.asarray(action, dtype=float).reshape(self.action_dim)
++        return _unsquash_action(action, self.v_max)
++
++    def log_prob_pre_squash(self, u: np.ndarray, psi: np.ndarray) -> float:
++        u = np.asarray(u, dtype=float).reshape(self.action_dim)
++        mean = self.mean(psi)
++        return _gaussian_log_prob(u, mean, self.sigma)
+ 
+     def log_prob(self, action: np.ndarray, psi: np.ndarray) -> float:
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+         mean = self.mean(psi)
+-        diff = action - mean
+-        var = self.sigma * self.sigma
+-        log_norm = -0.5 * self.action_dim * np.log(2.0 * np.pi * var)
+-        return float(log_norm - 0.5 * np.dot(diff, diff) / var)
++        u = _unsquash_action(action, self.v_max)
++        log_base = _gaussian_log_prob(u, mean, self.sigma)
++        log_det = float(np.sum(np.log(self.v_max) + _log1m_tanh2(u)))
++        return log_base - log_det
+ 
+     def score(self, action: np.ndarray, psi: np.ndarray) -> np.ndarray:
+         """Return grad_theta log pi(a|s) with shape theta."""
+         action = np.asarray(action, dtype=float).reshape(self.action_dim)
+         psi = np.asarray(psi, dtype=float).reshape(self.actor_dim)
+         mean = self.mean(psi)
+-        diff = action - mean
++        u = _unsquash_action(action, self.v_max)
++        diff = u - mean
+         scale = 1.0 / (self.sigma * self.sigma * np.sqrt(self.actor_dim))
+         return np.outer(psi, diff) * scale
+ 
+@@ -61,6 +95,21 @@ def importance_ratio(logpi: float, logmu: float) -> float:
+     return float(np.exp(logpi - logmu))
+ 
+ 
++def apply_rho_clip(rho: float, rho_clip: Optional[float], *, disable: bool = False) -> float:
++    """Optionally clip rho to an upper bound."""
++    if disable:
++        return float(rho)
++    if rho_clip is None:
++        return float(rho)
++    try:
++        rho_clip_val = float(rho_clip)
++    except (TypeError, ValueError):
++        return float(rho)
++    if rho_clip_val <= 0.0:
++        return float(rho)
++    return float(min(rho, rho_clip_val))
++
++
+ def critic_value(w: np.ndarray, phi: np.ndarray) -> float:
+     """Compute Q_w(s,a) = (w @ phi)/sqrt(N)."""
+     w = np.asarray(w, dtype=float).reshape(-1)
+diff --git a/tdrl_unfixed_ac/algos/unfixed_ac_py.md b/tdrl_unfixed_ac/algos/unfixed_ac_py.md
+deleted file mode 100644
+index 45e32a3..0000000
+--- a/tdrl_unfixed_ac/algos/unfixed_ac_py.md
++++ /dev/null
+@@ -1,78 +0,0 @@
+-"""Unfixed actor-critic primitives."""
+-
+-from __future__ import annotations
+-
+-from dataclasses import dataclass
+-from typing import Optional
+-
+-import numpy as np
+-
+-
+-def policy_mean(theta: np.ndarray, psi: np.ndarray) -> np.ndarray:
+-    """Compute m(s)=theta^T psi(s)/sqrt(N_act)."""
+-    theta = np.asarray(theta, dtype=float)
+-    psi = np.asarray(psi, dtype=float).reshape(theta.shape[0])
+-    return (theta.T @ psi) / np.sqrt(theta.shape[0])
+-
+-
+-@dataclass
+-class LinearGaussianPolicy:
+-    """Linear-Gaussian policy with diagonal covariance."""
+-
+-    theta: np.ndarray
+-    sigma: float
+-
+-    def mean(self, psi: np.ndarray) -> np.ndarray:
+-        return policy_mean(self.theta, psi)
+-
+-    @property
+-    def action_dim(self) -> int:
+-        return int(self.theta.shape[1])
+-
+-    @property
+-    def actor_dim(self) -> int:
+-        return int(self.theta.shape[0])
+-
+-    def sample_action(self, psi: np.ndarray, rng: Optional[np.random.Generator] = None) -> np.ndarray:
+-        rng = rng if rng is not None else np.random.default_rng()
+-        mean = self.mean(psi)
+-        return rng.normal(loc=mean, scale=self.sigma, size=self.action_dim)
+-
+-    def log_prob(self, action: np.ndarray, psi: np.ndarray) -> float:
+-        action = np.asarray(action, dtype=float).reshape(self.action_dim)
+-        mean = self.mean(psi)
+-        diff = action - mean
+-        var = self.sigma * self.sigma
+-        log_norm = -0.5 * self.action_dim * np.log(2.0 * np.pi * var)
+-        return float(log_norm - 0.5 * np.dot(diff, diff) / var)
+-
+-    def score(self, action: np.ndarray, psi: np.ndarray) -> np.ndarray:
+-        """Return grad_theta log pi(a|s) with shape theta."""
+-        action = np.asarray(action, dtype=float).reshape(self.action_dim)
+-        psi = np.asarray(psi, dtype=float).reshape(self.actor_dim)
+-        mean = self.mean(psi)
+-        diff = action - mean
+-        scale = 1.0 / (self.sigma * self.sigma * np.sqrt(self.actor_dim))
+-        return np.outer(psi, diff) * scale
+-
+-
+-def importance_ratio(logpi: float, logmu: float) -> float:
+-    """Compute rho = exp(logpi - logmu)."""
+-    return float(np.exp(logpi - logmu))
+-
+-
+-def critic_value(w: np.ndarray, phi: np.ndarray) -> float:
+-    """Compute Q_w(s,a) = (w @ phi)/sqrt(N)."""
+-    w = np.asarray(w, dtype=float).reshape(-1)
+-    phi = np.asarray(phi, dtype=float).reshape(-1)
+-    return float(np.dot(w, phi) / np.sqrt(w.shape[0]))
+-
+-
+-def project_to_ball(theta: np.ndarray, radius: float) -> np.ndarray:
+-    """Project theta onto L2 ball of given radius."""
+-    if radius <= 0.0:
+-        return theta
+-    norm = float(np.linalg.norm(theta))
+-    if norm > radius:
+-        return theta * (radius / (norm + 1e-12))
+-    return theta
+diff --git a/tdrl_unfixed_ac/envs/__init___py.md b/tdrl_unfixed_ac/envs/__init___py.md
+deleted file mode 100644
+index 2057c60..0000000
+--- a/tdrl_unfixed_ac/envs/__init___py.md
++++ /dev/null
+@@ -1,6 +0,0 @@
+-"""Environment package for torus Goblet&Ghost."""
+-
+-from .torus_gg import TorusGobletGhostEnv
+-
+-__all__ = ["TorusGobletGhostEnv"]
+-
+diff --git a/tdrl_unfixed_ac/envs/render.py b/tdrl_unfixed_ac/envs/render.py
+index 91ee8bb..deafc39 100644
+--- a/tdrl_unfixed_ac/envs/render.py
++++ b/tdrl_unfixed_ac/envs/render.py
+@@ -204,9 +204,7 @@ class TorusRenderer:
+         v_max = float(getattr(self.env, "v_max", 1.0))
+         if v_max <= 0.0:
+             return
+-        norm = float(np.linalg.norm(action))
+-        if norm > v_max and norm > 0.0:
+-            action = action / norm * v_max
++        action = np.clip(action, -v_max, v_max)
+         arrow = action / v_max * (0.3 * self.torus_size)
+         start = np.asarray(adv, dtype=float)
+         end = start + arrow
+diff --git a/tdrl_unfixed_ac/envs/render_py.md b/tdrl_unfixed_ac/envs/render_py.md
+deleted file mode 100644
+index 91ee8bb..0000000
+--- a/tdrl_unfixed_ac/envs/render_py.md
++++ /dev/null
+@@ -1,256 +0,0 @@
+-"""Optional pygame renderer for TorusGobletGhostEnv."""
+-
+-from __future__ import annotations
+-
+-import os
+-from pathlib import Path
+-from typing import Any, Optional, Tuple
+-
+-import numpy as np
+-
+-try:  # pragma: no cover - optional dependency
+-    import pygame
+-except Exception:  # pragma: no cover - optional dependency
+-    pygame = None
+-
+-
+-class HeadlessRenderer:
+-    """No-op renderer for headless usage."""
+-
+-    def __init__(self, env: Any) -> None:
+-        self.env = env
+-
+-    def render(self, action: Optional[np.ndarray] = None) -> None:
+-        return None
+-
+-    def close(self) -> None:
+-        return None
+-
+-
+-class FrameRecorder:
+-    """Optional frame recorder to gif/mp4 via imageio."""
+-
+-    def __init__(self, path: Optional[str], fps: int) -> None:
+-        self.path = Path(path) if path else None
+-        self.fps = int(fps)
+-        self._writer = None
+-        self._imageio = None
+-        if self.path is not None:
+-            try:
+-                import imageio.v2 as imageio  # type: ignore
+-            except Exception as exc:  # pragma: no cover
+-                raise RuntimeError("imageio is required for recording frames.") from exc
+-            self._imageio = imageio
+-            self._writer = imageio.get_writer(str(self.path), fps=self.fps)
+-
+-    def add(self, frame: np.ndarray) -> None:
+-        if self._writer is None:
+-            return
+-        self._writer.append_data(frame)
+-
+-    def close(self) -> None:
+-        if self._writer is None:
+-            return
+-        self._writer.close()
+-        self._writer = None
+-
+-
+-class TorusRenderer:
+-    """Pygame renderer for the torus Goblet&Ghost environment."""
+-
+-    def __init__(
+-        self,
+-        env: Any,
+-        *,
+-        width: int = 720,
+-        height: int = 720,
+-        fps: int = 30,
+-        show: bool = True,
+-        record_path: Optional[str] = None,
+-    ) -> None:
+-        if pygame is None:
+-            raise RuntimeError("pygame is required for rendering.")
+-        if not show:
+-            os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+-        pygame.init()
+-        pygame.font.init()
+-
+-        self.env = env
+-        self.width = int(width)
+-        self.height = int(height)
+-        self.fps = int(fps)
+-        self.show = bool(show)
+-        self.padding = 40
+-        self.torus_size = float(getattr(env, "torus_size", 1.0))
+-        self.scale = (min(self.width, self.height) - 2 * self.padding) / self.torus_size
+-        self._clock = pygame.time.Clock()
+-        self._font = pygame.font.SysFont(None, 18)
+-        self._closed = False
+-
+-        if self.show:
+-            self._window = pygame.display.set_mode((self.width, self.height))
+-            pygame.display.set_caption("Torus Goblet&Ghost")
+-            self._surface = self._window
+-        else:
+-            self._window = None
+-            self._surface = pygame.Surface((self.width, self.height))
+-
+-        self._recording = record_path is not None
+-        self._recorder = FrameRecorder(record_path, fps=self.fps)
+-
+-        self._colors = {
+-            "bg": (16, 18, 24),
+-            "grid": (60, 70, 90),
+-            "adventurer": (70, 200, 255),
+-            "ghost": (255, 120, 140),
+-            "goblet_pos": (250, 200, 70),
+-            "goblet_neg": (120, 60, 200),
+-            "text": (230, 230, 230),
+-            "arrow": (180, 255, 140),
+-        }
+-
+-    def render(self, action: Optional[np.ndarray] = None) -> None:
+-        if self._closed:
+-            return
+-        self._handle_events()
+-        self._surface.fill(self._colors["bg"])
+-        self._draw_grid()
+-        self._draw_goblets()
+-        self._draw_entities()
+-        self._draw_action(action)
+-        self._draw_events()
+-
+-        if self.show and self._window is not None:
+-            pygame.display.flip()
+-            self._clock.tick(self.fps)
+-
+-        if self._recording:
+-            frame = pygame.surfarray.array3d(self._surface)
+-            frame = np.transpose(frame, (1, 0, 2))
+-            self._recorder.add(frame)
+-
+-    def close(self) -> None:
+-        self._recorder.close()
+-        if pygame is not None:
+-            pygame.quit()
+-
+-    def _handle_events(self) -> None:
+-        if not self.show:
+-            return
+-        for event in pygame.event.get():
+-            if event.type == pygame.QUIT:
+-                self._closed = True
+-
+-    def _world_to_screen(self, pos: np.ndarray) -> Tuple[int, int]:
+-        x, y = pos
+-        sx = int(self.padding + x * self.scale)
+-        sy = int(self.padding + y * self.scale)
+-        return sx, sy
+-
+-    def _draw_grid(self) -> None:
+-        rect = pygame.Rect(
+-            self.padding,
+-            self.padding,
+-            int(self.torus_size * self.scale),
+-            int(self.torus_size * self.scale),
+-        )
+-        pygame.draw.rect(self._surface, self._colors["grid"], rect, width=2)
+-        steps = 6
+-        for i in range(1, steps):
+-            offset = int(i * rect.width / steps)
+-            pygame.draw.line(
+-                self._surface,
+-                self._colors["grid"],
+-                (rect.left + offset, rect.top),
+-                (rect.left + offset, rect.bottom),
+-                width=1,
+-            )
+-            pygame.draw.line(
+-                self._surface,
+-                self._colors["grid"],
+-                (rect.left, rect.top + offset),
+-                (rect.right, rect.top + offset),
+-                width=1,
+-            )
+-
+-    def _draw_goblets(self) -> None:
+-        goblets = getattr(self.env, "goblets_pos", None)
+-        goblet_types = getattr(self.env, "goblets_type", None)
+-        if goblets is None or goblet_types is None:
+-            return
+-        for pos, gtype in zip(goblets, goblet_types):
+-            color = self._colors["goblet_pos"] if gtype > 0 else self._colors["goblet_neg"]
+-            center = self._world_to_screen(pos)
+-            pygame.draw.circle(self._surface, color, center, 6)
+-            pygame.draw.circle(self._surface, (20, 20, 20), center, 6, width=1)
+-
+-    def _draw_entities(self) -> None:
+-        adv = getattr(self.env, "adventurer", None)
+-        ghost = getattr(self.env, "ghost", None)
+-        if adv is not None:
+-            pygame.draw.circle(self._surface, self._colors["adventurer"], self._world_to_screen(adv), 8)
+-            pygame.draw.circle(self._surface, (10, 10, 10), self._world_to_screen(adv), 8, width=1)
+-        if ghost is not None:
+-            pygame.draw.circle(self._surface, self._colors["ghost"], self._world_to_screen(ghost), 8)
+-            pygame.draw.circle(self._surface, (10, 10, 10), self._world_to_screen(ghost), 8, width=1)
+-
+-    def _draw_action(self, action: Optional[np.ndarray]) -> None:
+-        if action is None:
+-            return
+-        adv = getattr(self.env, "adventurer", None)
+-        if adv is None:
+-            return
+-        action = np.asarray(action, dtype=float).reshape(2)
+-        v_max = float(getattr(self.env, "v_max", 1.0))
+-        if v_max <= 0.0:
+-            return
+-        norm = float(np.linalg.norm(action))
+-        if norm > v_max and norm > 0.0:
+-            action = action / norm * v_max
+-        arrow = action / v_max * (0.3 * self.torus_size)
+-        start = np.asarray(adv, dtype=float)
+-        end = start + arrow
+-        start_px = self._world_to_screen(start)
+-        end_px = self._world_to_screen(end)
+-        pygame.draw.line(self._surface, self._colors["arrow"], start_px, end_px, width=2)
+-        self._draw_arrow_head(start_px, end_px)
+-
+-    def _draw_arrow_head(self, start: Tuple[int, int], end: Tuple[int, int]) -> None:
+-        vec = np.array([end[0] - start[0], end[1] - start[1]], dtype=float)
+-        norm = float(np.linalg.norm(vec))
+-        if norm <= 1e-6:
+-            return
+-        direction = vec / norm
+-        perp = np.array([-direction[1], direction[0]])
+-        tip = np.array(end, dtype=float)
+-        left = tip - direction * 8 + perp * 5
+-        right = tip - direction * 8 - perp * 5
+-        pygame.draw.polygon(
+-            self._surface,
+-            self._colors["arrow"],
+-            [tip.tolist(), left.tolist(), right.tolist()],
+-        )
+-
+-    def _draw_events(self) -> None:
+-        events = getattr(self.env, "last_events", {})
+-        lines = []
+-        if events.get("caught"):
+-            lines.append("Caught!")
+-        if events.get("picked"):
+-            pick_type = events.get("picked_type", 0.0)
+-            label = "Picked +" if pick_type > 0 else "Picked -"
+-            lines.append(label)
+-        if events.get("restart"):
+-            lines.append("Restart")
+-        step = getattr(self.env, "_step_count", None)
+-        if step is not None:
+-            lines.append(f"Step {step}")
+-
+-        if not lines:
+-            return
+-        x = 12
+-        y = 10
+-        for line in lines:
+-            surface = self._font.render(line, True, self._colors["text"])
+-            self._surface.blit(surface, (x, y))
+-            y += surface.get_height() + 2
+diff --git a/tdrl_unfixed_ac/envs/torus_gg.py b/tdrl_unfixed_ac/envs/torus_gg.py
+index bbf5691..be0c04a 100644
+--- a/tdrl_unfixed_ac/envs/torus_gg.py
++++ b/tdrl_unfixed_ac/envs/torus_gg.py
+@@ -237,10 +237,9 @@ class TorusGobletGhostEnv:
+         return np.where(mask, 1.0, -1.0)
+ 
+     def _clip_action(self, action: np.ndarray) -> np.ndarray:
+-        norm = np.linalg.norm(action)
+-        if norm > self.v_max and norm > 0.0:
+-            return action / norm * self.v_max
+-        return action
++        if self.v_max <= 0.0:
++            return action
++        return np.clip(action, -self.v_max, self.v_max)
+ 
+     def _wrap(self, pos: np.ndarray) -> np.ndarray:
+         return wrap_torus(pos, self.torus_size)
+diff --git a/tdrl_unfixed_ac/envs/torus_gg_py.md b/tdrl_unfixed_ac/envs/torus_gg_py.md
+deleted file mode 100644
+index 75174b5..0000000
+--- a/tdrl_unfixed_ac/envs/torus_gg_py.md
++++ /dev/null
+@@ -1,255 +0,0 @@
+-"""Continuing-control torus Goblet&Ghost environment."""
+-
+-from __future__ import annotations
+-
+-import json
+-from pathlib import Path
+-from typing import Any, Dict, Optional, Tuple
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.features import ActorFeatureMap, CriticFeatureMap, TeacherReward, build_observation_vector
+-from tdrl_unfixed_ac.utils.geometry import torus_delta, torus_distance, wrap_torus
+-from tdrl_unfixed_ac.utils.seeding import Seeder
+-
+-try:
+-    import yaml  # type: ignore
+-except Exception:  # pragma: no cover - optional dependency
+-    yaml = None
+-
+-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "default.yaml"
+-
+-
+-def load_config(path: Optional[str] = None) -> Dict[str, Any]:
+-    """Load configuration from JSON/YAML file."""
+-    target = Path(path) if path else DEFAULT_CONFIG_PATH
+-    text = target.read_text()
+-    if yaml is not None:
+-        return yaml.safe_load(text)
+-    return json.loads(text)
+-
+-
+-class TorusGobletGhostEnv:
+-    """
+-    Headless Goblet&Ghost environment on a continuous torus.
+-
+-    State:
+-        - adventurer position in R^2
+-        - ghost position in R^2
+-        - K goblet positions in R^{K x 2} and types in {+1, -1}
+-    Events:
+-        - caught: ghost within eps_catch of adventurer, ghost respawns
+-        - picked: adventurer within eps_pick of goblet j, goblet respawns
+-        - p_mix restart: with probability p_mix replace next state with sample from nu
+-    """
+-
+-    def __init__(
+-        self,
+-        config: Optional[Dict[str, Any]] = None,
+-        config_path: Optional[str] = None,
+-        rng: Optional[np.random.Generator] = None,
+-    ) -> None:
+-        base_config = load_config()
+-        if config_path:
+-            base_config.update(load_config(config_path))
+-        if config:
+-            base_config.update(config)
+-        self.cfg = base_config
+-
+-        self.torus_size = float(self.cfg["torus_size"])
+-        self.dt = float(self.cfg["dt"])
+-        self.v_max = float(self.cfg["v_max"])
+-        self.v_ghost = float(self.cfg["v_ghost"])
+-        self.sigma_env = float(self.cfg["sigma_env"])
+-        self.sigma_ghost = float(self.cfg["sigma_ghost"])
+-        self.eps_catch = float(self.cfg["eps_catch"])
+-        self.eps_pick = float(self.cfg["eps_pick"])
+-        self.num_goblets = int(self.cfg["num_goblets"])
+-        self.p_mix = float(self.cfg["p_mix"])
+-        self.p_type_positive = float(self.cfg["p_type_positive"])
+-        self.type_resample_p = float(self.cfg["type_resample_p"])
+-        self.use_teacher_reward = bool(self.cfg.get("use_teacher_reward", True))
+-        self.feature_dim = int(self.cfg.get("feature_dim", 128))
+-        self.actor_feature_dim = int(self.cfg.get("actor_feature_dim", 32))
+-        self.c_psi = float(self.cfg.get("c_psi", 1.0))
+-        self.feature_sigma = float(self.cfg.get("feature_sigma", 1.0))
+-        self.lambda_action = float(self.cfg.get("lambda_action_penalty", 0.1))
+-        self.teacher_base_scale = float(self.cfg.get("teacher_base_scale", 0.05))
+-
+-        self.seeder = Seeder(self.cfg.get("seed"))
+-        self.rng = rng if rng is not None else self.seeder.rng
+-        self._init_feature_maps()
+-
+-        self.adventurer: np.ndarray
+-        self.ghost: np.ndarray
+-        self.goblets_pos: np.ndarray
+-        self.goblets_type: np.ndarray
+-        self._step_count = 0
+-        self.last_events: Dict[str, Any] = {}
+-
+-    def _init_feature_maps(self) -> None:
+-        dummy_obs = {
+-            "adventurer": np.zeros(2, dtype=float),
+-            "ghost": np.zeros(2, dtype=float),
+-            "goblets_pos": np.zeros((self.num_goblets, 2), dtype=float),
+-            "goblets_type": np.zeros(self.num_goblets, dtype=float),
+-            "caught": False,
+-            "picked": False,
+-            "picked_type": 0.0,
+-            "restart": False,
+-        }
+-        self.obs_dim = build_observation_vector(dummy_obs, self.torus_size).shape[0]
+-
+-        actor_rng = self.seeder.spawn()
+-        critic_rng = self.seeder.spawn()
+-        teacher_rng = self.seeder.spawn()
+-
+-        self.actor_features_map = ActorFeatureMap(
+-            obs_dim=self.obs_dim, dim=self.actor_feature_dim, c_psi=self.c_psi, rng=actor_rng
+-        )
+-        self.critic_features_map = CriticFeatureMap(
+-            obs_dim=self.obs_dim, dim=self.feature_dim, sigma=self.feature_sigma, rng=critic_rng
+-        )
+-        self.teacher_reward = TeacherReward(
+-            critic_features=self.critic_features_map,
+-            lambda_action=self.lambda_action,
+-            base_scale=self.teacher_base_scale,
+-            rng=teacher_rng,
+-        )
+-
+-    # API ----------------------------------------------------------------- #
+-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+-        if seed is not None:
+-            self.rng = self.seeder.reseed(seed)
+-        self._step_count = 0
+-        self._sample_state(resample_types=True)
+-        self.last_events = {
+-            "caught": False,
+-            "picked": False,
+-            "picked_type": 0.0,
+-            "restart": False,
+-        }
+-        return self._get_obs(), {"seed": seed}
+-
+-    def step(self, action: np.ndarray) -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any]]:
+-        action = np.asarray(action, dtype=float).reshape(2)
+-        clipped_action = self._clip_action(action)
+-
+-        env_noise = self.rng.normal(loc=0.0, scale=self.sigma_env, size=2)
+-        self.adventurer = wrap_torus(self.adventurer + self.dt * clipped_action + env_noise, self.torus_size)
+-
+-        ghost_delta = torus_delta(self.ghost, self.adventurer, self.torus_size)
+-        ghost_dir = self._safe_unit(ghost_delta)
+-        ghost_noise = self.rng.normal(loc=0.0, scale=self.sigma_ghost, size=2)
+-        self.ghost = wrap_torus(self.ghost + self.dt * self.v_ghost * ghost_dir + ghost_noise, self.torus_size)
+-
+-        caught = self._check_caught()
+-        picked, picked_type = self._check_picked()
+-
+-        restart = False
+-        if self.rng.random() < self.p_mix:
+-            self._sample_state(resample_types=True)
+-            restart = True
+-
+-        self._step_count += 1
+-        self.last_events = {
+-            "caught": caught,
+-            "picked": picked,
+-            "picked_type": picked_type,
+-            "restart": restart,
+-        }
+-
+-        obs = self._get_obs()
+-        obs_vec, psi, phi = self._compute_features(obs, clipped_action)
+-        reward = self.teacher_reward(phi) if self.use_teacher_reward else 0.0
+-        terminated = False  # continuing task
+-        truncated = False
+-        info = {
+-            "caught": caught,
+-            "picked": picked,
+-            "picked_type": picked_type,
+-            "restart": restart,
+-            "step": self._step_count,
+-            "obs_vec": obs_vec,
+-            "psi": psi,
+-            "phi": phi,
+-            "clipped_action": clipped_action,
+-            "reward_teacher": reward,
+-        }
+-        return obs, reward, terminated, truncated, info
+-
+-    # Internal helpers ---------------------------------------------------- #
+-    def _sample_state(self, resample_types: bool = True) -> None:
+-        self.adventurer = self.rng.uniform(0.0, self.torus_size, size=2)
+-        self.ghost = self.rng.uniform(0.0, self.torus_size, size=2)
+-        self.goblets_pos = self.rng.uniform(0.0, self.torus_size, size=(self.num_goblets, 2))
+-        if resample_types or not hasattr(self, "goblets_type"):
+-            self.goblets_type = self._sample_goblet_types(self.num_goblets)
+-
+-    def _sample_goblet_types(self, n: int) -> np.ndarray:
+-        mask = self.rng.random(size=n) < self.p_type_positive
+-        return np.where(mask, 1.0, -1.0)
+-
+-    def _clip_action(self, action: np.ndarray) -> np.ndarray:
+-        norm = np.linalg.norm(action)
+-        if norm > self.v_max and norm > 0.0:
+-            return action / norm * self.v_max
+-        return action
+-
+-    def _safe_unit(self, vec: np.ndarray) -> np.ndarray:
+-        norm = np.linalg.norm(vec)
+-        if norm < 1e-12:
+-            return np.zeros_like(vec)
+-        return vec / norm
+-
+-    def _check_caught(self) -> bool:
+-        dist = torus_distance(self.ghost, self.adventurer, self.torus_size)
+-        if dist <= self.eps_catch:
+-            self.ghost = self.rng.uniform(0.0, self.torus_size, size=2)
+-            return True
+-        return False
+-
+-    def _check_picked(self) -> Tuple[bool, float]:
+-        deltas = torus_delta(self.goblets_pos, self.adventurer, self.torus_size)
+-        dists = np.linalg.norm(deltas, axis=1)
+-        close_indices = np.nonzero(dists <= self.eps_pick)[0]
+-        if close_indices.size == 0:
+-            return False, 0.0
+-
+-        idx = int(close_indices[0])
+-        picked_type = float(self.goblets_type[idx])
+-        self._respawn_goblet(idx)
+-        return True, picked_type
+-
+-    def _respawn_goblet(self, idx: int) -> None:
+-        self.goblets_pos[idx] = self.rng.uniform(0.0, self.torus_size, size=2)
+-        if self.rng.random() < self.type_resample_p:
+-            self.goblets_type[idx] = self._sample_goblet_types(1)[0]
+-
+-    def _get_obs(self) -> Dict[str, Any]:
+-        return {
+-            "adventurer": np.array(self.adventurer, copy=True),
+-            "ghost": np.array(self.ghost, copy=True),
+-            "goblets_pos": np.array(self.goblets_pos, copy=True),
+-            "goblets_type": np.array(self.goblets_type, copy=True),
+-            "caught": bool(self.last_events.get("caught", False)),
+-            "picked": bool(self.last_events.get("picked", False)),
+-            "picked_type": float(self.last_events.get("picked_type", 0.0)),
+-            "restart": bool(self.last_events.get("restart", False)),
+-        }
+-
+-    def _compute_features(
+-        self, raw_obs: Dict[str, Any], clipped_action: np.ndarray
+-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+-        obs_vec = build_observation_vector(raw_obs, self.torus_size)
+-        psi = self.actor_features_map(obs_vec)
+-        phi = self.critic_features_map(obs_vec, clipped_action, raw_obs)
+-        return obs_vec, psi, phi
+-
+-    def compute_features(self, action: np.ndarray) -> Dict[str, np.ndarray]:
+-        """Public helper to obtain o(s), psi(s), and phi(s, a) for diagnostics."""
+-        action = np.asarray(action, dtype=float).reshape(2)
+-        clipped_action = self._clip_action(action)
+-        raw_obs = self._get_obs()
+-        obs_vec, psi, phi = self._compute_features(raw_obs, clipped_action)
+-        return {"obs_vec": obs_vec, "psi": psi, "phi": phi}
+diff --git a/tdrl_unfixed_ac/features/__init___py.md b/tdrl_unfixed_ac/features/__init___py.md
+deleted file mode 100644
+index 862a07e..0000000
+--- a/tdrl_unfixed_ac/features/__init___py.md
++++ /dev/null
+@@ -1,14 +0,0 @@
+-"""Feature construction for actors, critics, and teacher rewards."""
+-
+-from tdrl_unfixed_ac.features.actor_features import ActorFeatureMap
+-from tdrl_unfixed_ac.features.critic_features import CriticFeatureMap
+-from tdrl_unfixed_ac.features.observations import build_event_flags, build_observation_vector
+-from tdrl_unfixed_ac.features.teacher import TeacherReward
+-
+-__all__ = [
+-    "ActorFeatureMap",
+-    "CriticFeatureMap",
+-    "TeacherReward",
+-    "build_event_flags",
+-    "build_observation_vector",
+-]
+diff --git a/tdrl_unfixed_ac/features/actor_features_py.md b/tdrl_unfixed_ac/features/actor_features_py.md
+deleted file mode 100644
+index 17a51bd..0000000
+--- a/tdrl_unfixed_ac/features/actor_features_py.md
++++ /dev/null
+@@ -1,30 +0,0 @@
+-"""Actor feature map producing bounded psi(s)."""
+-
+-from __future__ import annotations
+-
+-from typing import Optional
+-
+-import numpy as np
+-
+-
+-class ActorFeatureMap:
+-    """Fixed random projection with norm clipping to bound psi(s)."""
+-
+-    def __init__(self, obs_dim: int, dim: int, c_psi: float = 1.0, rng: Optional[np.random.Generator] = None) -> None:
+-        self.obs_dim = int(obs_dim)
+-        self.dim = int(dim)
+-        self.c_psi = float(c_psi)
+-        self.rng = rng if rng is not None else np.random.default_rng()
+-
+-        scale = 1.0 / max(np.sqrt(self.obs_dim), 1.0)
+-        self.W = self.rng.normal(loc=0.0, scale=scale, size=(self.dim, self.obs_dim))
+-        self.b = self.rng.normal(loc=0.0, scale=0.1, size=self.dim)
+-
+-    def __call__(self, obs_vec: np.ndarray) -> np.ndarray:
+-        obs_vec = np.asarray(obs_vec, dtype=float).reshape(self.obs_dim)
+-        z = self.W @ obs_vec + self.b
+-        psi = np.tanh(z)
+-        norm = float(np.linalg.norm(psi))
+-        if norm > self.c_psi:
+-            psi = psi * (self.c_psi / (norm + 1e-12))
+-        return psi
+diff --git a/tdrl_unfixed_ac/features/critic_features_py.md b/tdrl_unfixed_ac/features/critic_features_py.md
+deleted file mode 100644
+index cc0b96b..0000000
+--- a/tdrl_unfixed_ac/features/critic_features_py.md
++++ /dev/null
+@@ -1,50 +0,0 @@
+-"""Critic feature map using random Fourier features plus explicit events."""
+-
+-from __future__ import annotations
+-
+-from typing import Any, Dict, Optional
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.features.observations import build_event_flags
+-
+-
+-class CriticFeatureMap:
+-    """Compute phi(s, a) with random Fourier features and appended event features."""
+-
+-    def __init__(
+-        self,
+-        obs_dim: int,
+-        dim: int,
+-        *,
+-        action_dim: int = 2,
+-        sigma: float = 1.0,
+-        rng: Optional[np.random.Generator] = None,
+-    ) -> None:
+-        self.obs_dim = int(obs_dim)
+-        self.dim = int(dim)
+-        self.action_dim = int(action_dim)
+-        self.event_dim = 4  # caught, pick_pos, pick_neg, action_penalty
+-        self.base_dim = max(self.dim - self.event_dim, 1)
+-        self.input_dim = self.obs_dim + self.action_dim + 1  # +1 for bias term in x
+-        self.rng = rng if rng is not None else np.random.default_rng()
+-
+-        self.W = self.rng.normal(loc=0.0, scale=sigma, size=(self.base_dim, self.input_dim))
+-        self.b = self.rng.uniform(low=0.0, high=2.0 * np.pi, size=self.base_dim)
+-
+-    def __call__(self, obs_vec: np.ndarray, action: np.ndarray, raw_obs: Dict[str, Any]) -> np.ndarray:
+-        obs_vec = np.asarray(obs_vec, dtype=float).reshape(self.obs_dim)
+-        action = np.asarray(action, dtype=float).reshape(self.action_dim)
+-        x = np.concatenate([obs_vec, action, np.array([1.0], dtype=float)], axis=0)
+-
+-        proj = self.W @ x + self.b
+-        base_features = np.sqrt(2.0 / self.base_dim) * np.cos(proj)
+-
+-        events = build_event_flags(raw_obs)
+-        action_penalty = float(np.dot(action, action))
+-        event_features = np.concatenate([events[:3], np.array([action_penalty], dtype=float)])
+-
+-        phi_full = np.concatenate([base_features, event_features], axis=0)
+-        if phi_full.shape[0] < self.dim:
+-            phi_full = np.pad(phi_full, (0, self.dim - phi_full.shape[0]))
+-        return phi_full[: self.dim]
+diff --git a/tdrl_unfixed_ac/features/observations_py.md b/tdrl_unfixed_ac/features/observations_py.md
+deleted file mode 100644
+index 785e499..0000000
+--- a/tdrl_unfixed_ac/features/observations_py.md
++++ /dev/null
+@@ -1,78 +0,0 @@
+-"""Interpretable observation vector construction."""
+-
+-from __future__ import annotations
+-
+-from typing import Any, Dict
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.utils.geometry import torus_delta
+-
+-
+-def _encode_position(pos: np.ndarray, torus_size: float) -> np.ndarray:
+-    """Encode a 2D position with sin/cos to remove torus discontinuity."""
+-    pos = np.asarray(pos, dtype=float).reshape(2)
+-    angle = 2.0 * np.pi * pos / torus_size
+-    return np.concatenate([np.sin(angle), np.cos(angle)], axis=0)
+-
+-
+-def build_event_flags(raw_obs: Dict[str, Any]) -> np.ndarray:
+-    """Return event one-hots: caught, picked_pos, picked_neg, restart."""
+-    picked_type = float(raw_obs.get("picked_type", 0.0))
+-    picked = bool(raw_obs.get("picked", False))
+-    return np.array(
+-        [
+-            float(raw_obs.get("caught", False)),
+-            float(picked and picked_type > 0.0),
+-            float(picked and picked_type < 0.0),
+-            float(raw_obs.get("restart", False)),
+-        ],
+-        dtype=float,
+-    )
+-
+-
+-def build_observation_vector(raw_obs: Dict[str, Any], torus_size: float) -> np.ndarray:
+-    """
+-    Build a low-dimensional observation vector o(s) from raw env observation.
+-
+-    Components (all continuous and fixed-size):
+-        - sin/cos of adventurer position (4)
+-        - sin/cos of ghost position (4)
+-        - relative vector to ghost (2, scaled by torus size)
+-        - relative vector to nearest goblet (2, scaled by torus size)
+-        - nearest goblet type (1) and mean goblet type (1)
+-        - event flags caught/pick_pos/pick_neg/restart (4)
+-    """
+-    adventurer = np.asarray(raw_obs["adventurer"], dtype=float).reshape(2)
+-    ghost = np.asarray(raw_obs["ghost"], dtype=float).reshape(2)
+-    goblets_pos = np.asarray(raw_obs["goblets_pos"], dtype=float)
+-    goblets_type = np.asarray(raw_obs["goblets_type"], dtype=float)
+-
+-    rel_ghost = torus_delta(adventurer, ghost, torus_size) / torus_size
+-
+-    if goblets_pos.size > 0:
+-        deltas = torus_delta(adventurer, goblets_pos, torus_size)
+-        dists = np.linalg.norm(deltas, axis=1)
+-        nearest_idx = int(np.argmin(dists))
+-        nearest_delta = deltas[nearest_idx] / torus_size
+-        nearest_type = float(goblets_type[nearest_idx])
+-        mean_type = float(np.mean(goblets_type))
+-    else:
+-        nearest_delta = np.zeros(2, dtype=float)
+-        nearest_type = 0.0
+-        mean_type = 0.0
+-
+-    events = build_event_flags(raw_obs)
+-
+-    obs_vec = np.concatenate(
+-        [
+-            _encode_position(adventurer, torus_size),
+-            _encode_position(ghost, torus_size),
+-            rel_ghost,
+-            nearest_delta,
+-            np.array([nearest_type, mean_type], dtype=float),
+-            events,
+-        ],
+-        axis=0,
+-    )
+-    return obs_vec
+diff --git a/tdrl_unfixed_ac/features/teacher_py.md b/tdrl_unfixed_ac/features/teacher_py.md
+deleted file mode 100644
+index 4cc18ac..0000000
+--- a/tdrl_unfixed_ac/features/teacher_py.md
++++ /dev/null
+@@ -1,40 +0,0 @@
+-"""Teacher reward parameterization over critic features."""
+-
+-from __future__ import annotations
+-
+-from typing import Optional
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.features.critic_features import CriticFeatureMap
+-
+-
+-class TeacherReward:
+-    """Fixed teacher vector w_R with interpretable event weights."""
+-
+-    def __init__(
+-        self,
+-        critic_features: CriticFeatureMap,
+-        *,
+-        lambda_action: float = 0.1,
+-        base_scale: float = 0.05,
+-        rng: Optional[np.random.Generator] = None,
+-    ) -> None:
+-        self.critic_features = critic_features
+-        self.lambda_action = float(lambda_action)
+-        self.base_scale = float(base_scale)
+-        self.rng = rng if rng is not None else np.random.default_rng()
+-        self.w_R = self._init_teacher_vector()
+-
+-    def _init_teacher_vector(self) -> np.ndarray:
+-        base = self.rng.normal(loc=0.0, scale=self.base_scale, size=self.critic_features.base_dim)
+-        event_weights = np.array([-1.0, 1.0, -1.0, -self.lambda_action], dtype=float)
+-        w_full = np.concatenate([base, event_weights])
+-        if w_full.shape[0] < self.critic_features.dim:
+-            w_full = np.pad(w_full, (0, self.critic_features.dim - w_full.shape[0]))
+-        return w_full[: self.critic_features.dim]
+-
+-    def __call__(self, phi: np.ndarray) -> float:
+-        phi = np.asarray(phi, dtype=float).reshape(-1)
+-        scale = np.sqrt(self.critic_features.dim)
+-        return float(np.dot(self.w_R, phi) / scale)
+diff --git a/tdrl_unfixed_ac/probes/__init___py.md b/tdrl_unfixed_ac/probes/__init___py.md
+deleted file mode 100644
+index ed7f94b..0000000
+--- a/tdrl_unfixed_ac/probes/__init___py.md
++++ /dev/null
+@@ -1,5 +0,0 @@
+-"""Diagnostics probes for fixed points, stability, and distributions."""
+-
+-from .manager import ProbeManager
+-
+-__all__ = ["ProbeManager"]
+diff --git a/tdrl_unfixed_ac/probes/common.py b/tdrl_unfixed_ac/probes/common.py
+index bdeebab..ed3c6b5 100644
+--- a/tdrl_unfixed_ac/probes/common.py
++++ b/tdrl_unfixed_ac/probes/common.py
+@@ -2,20 +2,19 @@
+ 
+ from __future__ import annotations
+ 
+-from typing import Dict
++from typing import Dict, Optional
+ 
+ import numpy as np
+ 
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
++from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_clip
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+ 
+ 
+ def clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    """Clip action to L2 ball of radius v_max."""
+-    norm = float(np.linalg.norm(action))
+-    if norm > v_max and norm > 0.0:
+-        return action / norm * v_max
+-    return action
++    """Clip action per component to [-v_max, v_max]."""
++    if v_max <= 0.0:
++        return action
++    return np.clip(action, -v_max, v_max)
+ 
+ 
+ def mc_bar_phi(
+@@ -43,6 +42,8 @@ def collect_critic_batch(
+     rng: np.random.Generator,
+     batch_size: int,
+     k_mc: int,
++    rho_clip: Optional[float] = None,
++    disable_rho_clip: bool = False,
+ ) -> Dict[str, np.ndarray]:
+     """Collect a batch of critic transitions under behavior policy mu."""
+     zero_action = np.zeros(2, dtype=float)
+@@ -64,7 +65,8 @@ def collect_critic_batch(
+ 
+         logp_pi = pi_policy.log_prob(a, psi)
+         logp_mu = mu_policy.log_prob(a, psi)
+-        rho = float(np.exp(logp_pi - logp_mu))
++        rho_raw = float(np.exp(logp_pi - logp_mu))
++        rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
+ 
+         obs, reward, terminated, truncated, info = env.step(a)
+ 
+@@ -92,3 +94,34 @@ def collect_critic_batch(
+         "rho": np.asarray(rhos, dtype=float),
+         "reward": np.asarray(rewards, dtype=float),
+     }
++
++
++def summarize_rho(rho: np.ndarray) -> Dict[str, float]:
++    rho_arr = np.asarray(rho, dtype=float)
++    if rho_arr.size == 0 or not np.isfinite(rho_arr).any():
++        return {
++            "rho_mean": float("nan"),
++            "rho2_mean": float("nan"),
++            "rho_min": float("nan"),
++            "rho_max": float("nan"),
++            "rho_p95": float("nan"),
++            "rho_p99": float("nan"),
++        }
++    rho_arr = rho_arr[np.isfinite(rho_arr)]
++    rho2_arr = rho_arr * rho_arr
++    return {
++        "rho_mean": float(np.mean(rho_arr)),
++        "rho2_mean": float(np.mean(rho2_arr)),
++        "rho_min": float(np.min(rho_arr)),
++        "rho_max": float(np.max(rho_arr)),
++        "rho_p95": float(np.quantile(rho_arr, 0.95)),
++        "rho_p99": float(np.quantile(rho_arr, 0.99)),
++    }
++
++
++def rho_clip_metadata(rho_clip: Optional[float], disable_rho_clip: bool) -> Dict[str, float]:
++    active = rho_clip is not None and float(rho_clip) > 0.0 and not disable_rho_clip
++    return {
++        "rho_clip": float(rho_clip) if rho_clip is not None else float("nan"),
++        "rho_clip_active": 1.0 if active else 0.0,
++    }
+diff --git a/tdrl_unfixed_ac/probes/common_py.md b/tdrl_unfixed_ac/probes/common_py.md
+deleted file mode 100644
+index 9ce83f2..0000000
+--- a/tdrl_unfixed_ac/probes/common_py.md
++++ /dev/null
+@@ -1,86 +0,0 @@
+-"""Shared utilities for probe computations."""
+-
+-from __future__ import annotations
+-
+-from typing import Dict
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, importance_ratio
+-from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-
+-
+-def clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
+-    """Clip action to L2 ball of radius v_max."""
+-    norm = float(np.linalg.norm(action))
+-    if norm > v_max and norm > 0.0:
+-        return action / norm * v_max
+-    return action
+-
+-
+-def mc_bar_phi(
+-    env: TorusGobletGhostEnv,
+-    policy: LinearGaussianPolicy,
+-    psi: np.ndarray,
+-    rng: np.random.Generator,
+-    k_mc: int,
+-) -> np.ndarray:
+-    """Monte Carlo estimate of E_pi[phi(s', a')] with frozen policy."""
+-    if k_mc <= 0:
+-        return env.compute_features(np.zeros(policy.action_dim, dtype=float))["phi"]
+-    phis = []
+-    for _ in range(k_mc):
+-        action = policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
+-        phis.append(env.compute_features(action)["phi"])
+-    return np.mean(np.stack(phis, axis=0), axis=0)
+-
+-
+-def collect_critic_batch(
+-    env: TorusGobletGhostEnv,
+-    mu_policy: LinearGaussianPolicy,
+-    pi_policy: LinearGaussianPolicy,
+-    rng: np.random.Generator,
+-    batch_size: int,
+-    k_mc: int,
+-) -> Dict[str, np.ndarray]:
+-    """Collect a batch of critic transitions under behavior policy mu."""
+-    action_dim = int(mu_policy.action_dim)
+-    zero_action = np.zeros(action_dim, dtype=float)
+-    seed_max = np.iinfo(np.int32).max
+-
+-    env.reset(seed=int(rng.integers(0, seed_max)))
+-
+-    phis = []
+-    bar_phis = []
+-    rhos = []
+-    rewards = []
+-
+-    for _ in range(batch_size):
+-        psi = env.compute_features(zero_action)["psi"]
+-        action = mu_policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
+-        phi = env.compute_features(action)["phi"]
+-
+-        logmu = mu_policy.log_prob(action, psi)
+-        logpi = pi_policy.log_prob(action, psi)
+-        rho = importance_ratio(logpi, logmu)
+-
+-        _, reward, terminated, truncated, _ = env.step(action)
+-        if terminated or truncated:
+-            raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+-
+-        psi_next = env.compute_features(zero_action)["psi"]
+-        bar_phi = mc_bar_phi(env, pi_policy, psi_next, rng, k_mc)
+-
+-        phis.append(phi)
+-        bar_phis.append(bar_phi)
+-        rhos.append(rho)
+-        rewards.append(reward)
+-
+-    return {
+-        "phi": np.stack(phis, axis=0),
+-        "bar_phi": np.stack(bar_phis, axis=0),
+-        "rho": np.asarray(rhos, dtype=float),
+-        "reward": np.asarray(rewards, dtype=float),
+-    }
+diff --git a/tdrl_unfixed_ac/probes/distribution_probe.py b/tdrl_unfixed_ac/probes/distribution_probe.py
+index 7ec7e36..52eb3b0 100644
+--- a/tdrl_unfixed_ac/probes/distribution_probe.py
++++ b/tdrl_unfixed_ac/probes/distribution_probe.py
+@@ -6,35 +6,135 @@ from typing import Any, Dict, Optional, Tuple
+ 
+ import numpy as np
+ 
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
++from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_clip
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import clip_action
++from tdrl_unfixed_ac.probes.common import clip_action, rho_clip_metadata, summarize_rho
+ 
+ 
+-def _collect_obs_vectors(
++def _collect_state_features(
+     env: TorusGobletGhostEnv,
+     policy: LinearGaussianPolicy,
+     rng: np.random.Generator,
+     num_samples: int,
+-) -> np.ndarray:
++) -> Tuple[np.ndarray, np.ndarray]:
+     action_dim = int(policy.action_dim)
+     zero_action = np.zeros(action_dim, dtype=float)
+     seed_max = np.iinfo(np.int32).max
+ 
+     env.reset(seed=int(rng.integers(0, seed_max)))
+     obs_vecs = []
++    psi_vecs = []
+     for _ in range(num_samples):
+         features = env.compute_features(zero_action)
+         obs_vecs.append(features["obs_vec"])
+ 
+         psi = features["psi"]
++        psi_vecs.append(psi)
+         action = policy.sample_action(psi, rng)
+         action = clip_action(action, env.v_max)
+         _, _, terminated, truncated, _ = env.step(action)
+         if terminated or truncated:
+             raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+ 
+-    return np.stack(obs_vecs, axis=0)
++    return np.stack(obs_vecs, axis=0), np.stack(psi_vecs, axis=0)
++
++
++def _collect_rho_samples(
++    env: TorusGobletGhostEnv,
++    mu_policy: LinearGaussianPolicy,
++    pi_policy: LinearGaussianPolicy,
++    rng: np.random.Generator,
++    num_samples: int,
++    *,
++    rho_clip: Optional[float],
++    disable_rho_clip: bool,
++) -> np.ndarray:
++    action_dim = int(mu_policy.action_dim)
++    zero_action = np.zeros(action_dim, dtype=float)
++    seed_max = np.iinfo(np.int32).max
++
++    env.reset(seed=int(rng.integers(0, seed_max)))
++    feat0 = env.compute_features(zero_action)
++    psi = feat0["psi"]
++
++    rhos = []
++    for _ in range(num_samples):
++        action = mu_policy.sample_action(psi, rng)
++        action = clip_action(action, env.v_max)
++        logp_pi = pi_policy.log_prob(action, psi)
++        logp_mu = mu_policy.log_prob(action, psi)
++        rho_raw = float(np.exp(logp_pi - logp_mu))
++        rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
++        rhos.append(rho)
++
++        _, _, terminated, truncated, info = env.step(action)
++        psi = info["psi_next"]
++        if terminated or truncated:
++            env.reset(seed=int(rng.integers(0, seed_max)))
++            feat0 = env.compute_features(zero_action)
++            psi = feat0["psi"]
++
++    return np.asarray(rhos, dtype=float)
++
++
++def _policy_mean_batch(theta: np.ndarray, psi_batch: np.ndarray) -> np.ndarray:
++    theta = np.asarray(theta, dtype=float)
++    psi_batch = np.asarray(psi_batch, dtype=float)
++    scale = np.sqrt(theta.shape[0])
++    return (psi_batch @ theta) / scale
++
++
++def _gaussian_kl_isotropic(
++    mean_p: np.ndarray,
++    sigma_p: float,
++    mean_q: np.ndarray,
++    sigma_q: float,
++) -> np.ndarray:
++    mean_p = np.asarray(mean_p, dtype=float)
++    mean_q = np.asarray(mean_q, dtype=float)
++    var_p = float(sigma_p) ** 2
++    var_q = float(sigma_q) ** 2
++    diff = mean_q - mean_p
++    diff_norm_sq = np.sum(diff * diff, axis=-1)
++    dim = mean_p.shape[-1]
++    log_ratio = np.log(var_q / var_p)
++    return 0.5 * (dim * (var_p / var_q) + diff_norm_sq / var_q - dim + dim * log_ratio)
++
++
++def _estimate_action_tv(
++    mean_pi: np.ndarray,
++    sigma_pi: float,
++    mean_mu: np.ndarray,
++    sigma_mu: float,
++    rng: np.random.Generator,
++    num_action_samples: int,
++    *,
++    clip_log_ratio: float = 50.0,
++) -> float:
++    if num_action_samples <= 0:
++        return float("nan")
++    mean_pi = np.asarray(mean_pi, dtype=float)
++    mean_mu = np.asarray(mean_mu, dtype=float)
++    num_states, action_dim = mean_pi.shape
++    if num_states == 0:
++        return float("nan")
++    actions = rng.normal(
++        loc=mean_pi[:, None, :],
++        scale=float(sigma_pi),
++        size=(num_states, num_action_samples, action_dim),
++    )
++    var_pi = float(sigma_pi) ** 2
++    var_mu = float(sigma_mu) ** 2
++    log_norm_pi = -0.5 * action_dim * np.log(2.0 * np.pi * var_pi)
++    log_norm_mu = -0.5 * action_dim * np.log(2.0 * np.pi * var_mu)
++    diff_pi = actions - mean_pi[:, None, :]
++    diff_mu = actions - mean_mu[:, None, :]
++    logp_pi = log_norm_pi - 0.5 * np.sum(diff_pi * diff_pi, axis=-1) / var_pi
++    logp_mu = log_norm_mu - 0.5 * np.sum(diff_mu * diff_mu, axis=-1) / var_mu
++    log_ratio = np.clip(logp_mu - logp_pi, -clip_log_ratio, clip_log_ratio)
++    ratio = np.exp(log_ratio)
++    tv_per_state = 0.5 * np.mean(np.abs(1.0 - ratio), axis=-1)
++    return float(np.mean(tv_per_state))
+ 
+ 
+ def _median_bandwidth(x: np.ndarray, max_samples: int, rng: np.random.Generator) -> float:
+@@ -75,27 +175,61 @@ def run_distribution_probe(
+     sigma_pi: float,
+     num_samples: int,
+     seed: Optional[int],
++    action_samples: int = 64,
++    rho_clip: Optional[float] = None,
++    disable_rho_clip: bool = False,
+ ) -> Dict[str, Any]:
+-    """Compare visitation distributions using MMD over observation vectors."""
++    """Compare visitation distributions using MMD and action divergence."""
+     base_seed = int(seed) if seed is not None else 0
+     rng_mu = np.random.default_rng(base_seed + 1)
+     rng_pi = np.random.default_rng(base_seed + 2)
+ 
+     env_mu = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 11))
+     env_pi = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 13))
++    env_rho = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 17))
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
++    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env_mu.v_max)
++    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env_mu.v_max)
+ 
+-    obs_mu = _collect_obs_vectors(env_mu, mu_policy, rng_mu, num_samples)
+-    obs_pi = _collect_obs_vectors(env_pi, pi_policy, rng_pi, num_samples)
++    obs_mu, psi_mu = _collect_state_features(env_mu, mu_policy, rng_mu, num_samples)
++    obs_pi, psi_pi = _collect_state_features(env_pi, pi_policy, rng_pi, num_samples)
+ 
+     mmd2, sigma = _mmd_rbf(obs_mu, obs_pi, rng_mu)
+     mean_l2 = float(np.linalg.norm(obs_mu.mean(axis=0) - obs_pi.mean(axis=0)))
+ 
++    psi_samples = np.concatenate([psi_mu, psi_pi], axis=0)
++    mean_pi = _policy_mean_batch(theta_pi, psi_samples)
++    mean_mu = _policy_mean_batch(theta_mu, psi_samples)
++    kl_vals = _gaussian_kl_isotropic(mean_pi, sigma_pi, mean_mu, sigma_mu)
++    dist_action_kl = float(np.mean(kl_vals)) if kl_vals.size > 0 else float("nan")
++    dist_action_tv = _estimate_action_tv(
++        mean_pi,
++        sigma_pi,
++        mean_mu,
++        sigma_mu,
++        rng_pi,
++        int(action_samples),
++    )
++    rho_samples = _collect_rho_samples(
++        env_rho,
++        mu_policy,
++        pi_policy,
++        rng_mu,
++        num_samples,
++        rho_clip=rho_clip,
++        disable_rho_clip=disable_rho_clip,
++    )
++    rho_stats = summarize_rho(rho_samples)
++    rho_meta = rho_clip_metadata(rho_clip, disable_rho_clip)
++
+     return {
+         "mmd2": float(mmd2),
+         "mmd_sigma": float(sigma),
+         "mean_l2": float(mean_l2),
+         "num_samples": int(num_samples),
++        "dist_action_kl": float(dist_action_kl),
++        "dist_action_tv": float(dist_action_tv),
++        "action_samples": int(action_samples),
++        **rho_stats,
++        **rho_meta,
+     }
+diff --git a/tdrl_unfixed_ac/probes/distribution_probe_py.md b/tdrl_unfixed_ac/probes/distribution_probe_py.md
+deleted file mode 100644
+index 7ec7e36..0000000
+--- a/tdrl_unfixed_ac/probes/distribution_probe_py.md
++++ /dev/null
+@@ -1,101 +0,0 @@
+-"""Distribution discrepancy probe between d_mu(s) and d_pi(s)."""
+-
+-from __future__ import annotations
+-
+-from typing import Any, Dict, Optional, Tuple
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+-from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import clip_action
+-
+-
+-def _collect_obs_vectors(
+-    env: TorusGobletGhostEnv,
+-    policy: LinearGaussianPolicy,
+-    rng: np.random.Generator,
+-    num_samples: int,
+-) -> np.ndarray:
+-    action_dim = int(policy.action_dim)
+-    zero_action = np.zeros(action_dim, dtype=float)
+-    seed_max = np.iinfo(np.int32).max
+-
+-    env.reset(seed=int(rng.integers(0, seed_max)))
+-    obs_vecs = []
+-    for _ in range(num_samples):
+-        features = env.compute_features(zero_action)
+-        obs_vecs.append(features["obs_vec"])
+-
+-        psi = features["psi"]
+-        action = policy.sample_action(psi, rng)
+-        action = clip_action(action, env.v_max)
+-        _, _, terminated, truncated, _ = env.step(action)
+-        if terminated or truncated:
+-            raise RuntimeError("Environment should be continuing but returned a terminal flag.")
+-
+-    return np.stack(obs_vecs, axis=0)
+-
+-
+-def _median_bandwidth(x: np.ndarray, max_samples: int, rng: np.random.Generator) -> float:
+-    if x.shape[0] > max_samples:
+-        idx = rng.choice(x.shape[0], size=max_samples, replace=False)
+-        x = x[idx]
+-    diffs = x[:, None, :] - x[None, :, :]
+-    dist_sq = np.sum(diffs * diffs, axis=-1)
+-    median = float(np.median(dist_sq))
+-    if median <= 1e-12:
+-        return 1.0
+-    return np.sqrt(0.5 * median)
+-
+-
+-def _mmd_rbf(x: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> Tuple[float, float]:
+-    combined = np.concatenate([x, y], axis=0)
+-    sigma = _median_bandwidth(combined, max_samples=300, rng=rng)
+-    denom = 2.0 * sigma * sigma
+-
+-    diff_xx = x[:, None, :] - x[None, :, :]
+-    diff_yy = y[:, None, :] - y[None, :, :]
+-    diff_xy = x[:, None, :] - y[None, :, :]
+-
+-    k_xx = np.exp(-np.sum(diff_xx * diff_xx, axis=-1) / denom)
+-    k_yy = np.exp(-np.sum(diff_yy * diff_yy, axis=-1) / denom)
+-    k_xy = np.exp(-np.sum(diff_xy * diff_xy, axis=-1) / denom)
+-
+-    mmd2 = float(np.mean(k_xx) + np.mean(k_yy) - 2.0 * np.mean(k_xy))
+-    return mmd2, sigma
+-
+-
+-def run_distribution_probe(
+-    *,
+-    env_config: Dict[str, Any],
+-    theta_mu: np.ndarray,
+-    theta_pi: np.ndarray,
+-    sigma_mu: float,
+-    sigma_pi: float,
+-    num_samples: int,
+-    seed: Optional[int],
+-) -> Dict[str, Any]:
+-    """Compare visitation distributions using MMD over observation vectors."""
+-    base_seed = int(seed) if seed is not None else 0
+-    rng_mu = np.random.default_rng(base_seed + 1)
+-    rng_pi = np.random.default_rng(base_seed + 2)
+-
+-    env_mu = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 11))
+-    env_pi = TorusGobletGhostEnv(config=env_config, rng=np.random.default_rng(base_seed + 13))
+-
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
+-
+-    obs_mu = _collect_obs_vectors(env_mu, mu_policy, rng_mu, num_samples)
+-    obs_pi = _collect_obs_vectors(env_pi, pi_policy, rng_pi, num_samples)
+-
+-    mmd2, sigma = _mmd_rbf(obs_mu, obs_pi, rng_mu)
+-    mean_l2 = float(np.linalg.norm(obs_mu.mean(axis=0) - obs_pi.mean(axis=0)))
+-
+-    return {
+-        "mmd2": float(mmd2),
+-        "mmd_sigma": float(sigma),
+-        "mean_l2": float(mean_l2),
+-        "num_samples": int(num_samples),
+-    }
+diff --git a/tdrl_unfixed_ac/probes/fixed_point_probe.py b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+index 0d7771c..00782d3 100644
+--- a/tdrl_unfixed_ac/probes/fixed_point_probe.py
++++ b/tdrl_unfixed_ac/probes/fixed_point_probe.py
+@@ -8,7 +8,7 @@ import numpy as np
+ 
+ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import collect_critic_batch
++from tdrl_unfixed_ac.probes.common import collect_critic_batch, rho_clip_metadata, summarize_rho
+ 
+ 
+ def run_fixed_point_probe(
+@@ -25,16 +25,29 @@ def run_fixed_point_probe(
+     batch_size: int,
+     max_iters: int,
+     tol: float,
++    rho_clip: Optional[float],
++    disable_rho_clip: bool,
+     seed: Optional[int],
+ ) -> Dict[str, Any]:
+     """Estimate the TD fixed point w_sharp for frozen (mu, pi)."""
+     rng = np.random.default_rng(seed)
+     env = TorusGobletGhostEnv(config=env_config, rng=rng)
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
++    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=env.v_max)
++    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=env.v_max)
+ 
+-    batch = collect_critic_batch(env, mu_policy, pi_policy, rng, batch_size, k_mc)
++    batch = collect_critic_batch(
++        env,
++        mu_policy,
++        pi_policy,
++        rng,
++        batch_size,
++        k_mc,
++        rho_clip=rho_clip,
++        disable_rho_clip=disable_rho_clip,
++    )
++    rho_stats = summarize_rho(batch["rho"])
++    rho_meta = rho_clip_metadata(rho_clip, disable_rho_clip)
+ 
+     w = np.array(w_init, copy=True)
+     feature_dim = w.shape[0]
+@@ -60,4 +73,6 @@ def run_fixed_point_probe(
+         "num_iters": steps,
+         "batch_size": int(batch_size),
+         "tol": float(tol),
++        **rho_stats,
++        **rho_meta,
+     }
+diff --git a/tdrl_unfixed_ac/probes/fixed_point_probe_py.md b/tdrl_unfixed_ac/probes/fixed_point_probe_py.md
+deleted file mode 100644
+index 0d7771c..0000000
+--- a/tdrl_unfixed_ac/probes/fixed_point_probe_py.md
++++ /dev/null
+@@ -1,63 +0,0 @@
+-"""Fixed point drift probe for the critic under frozen policies."""
+-
+-from __future__ import annotations
+-
+-from typing import Any, Dict, Optional
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+-from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import collect_critic_batch
+-
+-
+-def run_fixed_point_probe(
+-    *,
+-    env_config: Dict[str, Any],
+-    theta_mu: np.ndarray,
+-    theta_pi: np.ndarray,
+-    w_init: np.ndarray,
+-    sigma_mu: float,
+-    sigma_pi: float,
+-    alpha_w: float,
+-    gamma: float,
+-    k_mc: int,
+-    batch_size: int,
+-    max_iters: int,
+-    tol: float,
+-    seed: Optional[int],
+-) -> Dict[str, Any]:
+-    """Estimate the TD fixed point w_sharp for frozen (mu, pi)."""
+-    rng = np.random.default_rng(seed)
+-    env = TorusGobletGhostEnv(config=env_config, rng=rng)
+-
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
+-
+-    batch = collect_critic_batch(env, mu_policy, pi_policy, rng, batch_size, k_mc)
+-
+-    w = np.array(w_init, copy=True)
+-    feature_dim = w.shape[0]
+-    scale = np.sqrt(feature_dim)
+-    diff = gamma * batch["bar_phi"] - batch["phi"]
+-
+-    converged = False
+-    steps = 0
+-    for step in range(int(max_iters)):
+-        delta = batch["reward"] + (diff @ w) / scale
+-        grad = (batch["rho"] * delta)[:, None] * batch["phi"]
+-        w_next = w + alpha_w * grad.mean(axis=0)
+-        steps = step + 1
+-        if float(np.linalg.norm(w_next - w)) <= tol:
+-            converged = True
+-            w = w_next
+-            break
+-        w = w_next
+-
+-    return {
+-        "w_sharp": w,
+-        "converged": converged,
+-        "num_iters": steps,
+-        "batch_size": int(batch_size),
+-        "tol": float(tol),
+-    }
+diff --git a/tdrl_unfixed_ac/probes/manager.py b/tdrl_unfixed_ac/probes/manager.py
+index 5661d6d..3bc5692 100644
+--- a/tdrl_unfixed_ac/probes/manager.py
++++ b/tdrl_unfixed_ac/probes/manager.py
+@@ -12,7 +12,9 @@ import numpy as np
+ 
+ from tdrl_unfixed_ac.probes.distribution_probe import run_distribution_probe
+ from tdrl_unfixed_ac.probes.fixed_point_probe import run_fixed_point_probe
++from tdrl_unfixed_ac.probes.q_kernel_probe import run_q_kernel_probe
+ from tdrl_unfixed_ac.probes.stability_probe import run_stability_probe
++from tdrl_unfixed_ac.utils.seeding import save_restore_rng_state
+ 
+ 
+ class ProbeManager:
+@@ -26,10 +28,13 @@ class ProbeManager:
+         env_config: Dict[str, Any],
+         seed: Optional[int],
+         alpha_w: float,
++        train_step_scale: float,
+         gamma: float,
+         k_mc: int,
+         sigma_mu: float,
+         sigma_pi: float,
++        rho_clip: Optional[float],
++        disable_rho_clip: bool,
+     ) -> None:
+         cfg = config or {}
+         self.enabled = bool(cfg.get("enabled", False))
+@@ -48,14 +53,21 @@ class ProbeManager:
+         self.stability_enabled = bool(self.stability_cfg.get("enabled", True))
+         self.dist_cfg = deepcopy(cfg.get("distribution", {}))
+         self.dist_enabled = bool(self.dist_cfg.get("enabled", True))
++        self.q_kernel_cfg = deepcopy(cfg.get("q_kernel", {}))
++        self.q_kernel_enabled = bool(self.q_kernel_cfg.get("enabled", False))
++        self.q_kernel_batch_size = int(self.q_kernel_cfg.get("batch_size", 8))
++        self.q_kernel_max_horizon = int(self.q_kernel_cfg.get("max_horizon", 200))
+ 
+         self.env_config = deepcopy(env_config)
+         self.seed = seed
+         self.alpha_w = float(alpha_w)
++        self.train_step_scale = float(train_step_scale)
+         self.gamma = float(gamma)
+         self.k_mc = int(k_mc)
+         self.sigma_mu = float(sigma_mu)
+         self.sigma_pi = float(sigma_pi)
++        self.rho_clip = rho_clip
++        self.disable_rho_clip = bool(disable_rho_clip)
+ 
+         self.output_dir = Path(output_dir) / "probes"
+         if self.enabled:
+@@ -73,11 +85,18 @@ class ProbeManager:
+         if self.fixed_enabled:
+             defaults["fixed_point_gap"] = float("nan")
+             defaults["fixed_point_drift"] = float("nan")
++            defaults["fixed_point_drift_defined"] = 0.0
+         if self.stability_enabled:
+             defaults["stability_proxy"] = float("nan")
+         if self.dist_enabled:
+             defaults["dist_mmd2"] = float("nan")
+             defaults["dist_mean_l2"] = float("nan")
++            defaults["dist_action_kl"] = float("nan")
++            defaults["dist_action_tv"] = float("nan")
++        if self.q_kernel_enabled:
++            defaults["td_loss_from_Q"] = float("nan")
++            defaults["td_loss_from_Q_abs_diff"] = float("nan")
++            defaults["td_loss_from_Q_rel_diff"] = float("nan")
+         return defaults
+ 
+     def maybe_run(
+@@ -88,6 +107,7 @@ class ProbeManager:
+         w: np.ndarray,
+         theta_mu: np.ndarray,
+         theta_pi: np.ndarray,
++        delta_cache: Optional[np.ndarray] = None,
+     ) -> Dict[str, float]:
+         if not self.enabled:
+             return {}
+@@ -103,114 +123,169 @@ class ProbeManager:
+         self._last_probe_iter = iteration
+         results: Dict[str, float] = {}
+ 
+-        if self.fixed_enabled:
+-            fixed_cfg = self._with_defaults(
+-                self.fixed_cfg,
+-                {
+-                    "batch_size": 4096,
+-                    "max_iters": 200,
+-                    "tol": 1e-4,
+-                    "alpha_w": self.alpha_w,
+-                    "gamma": self.gamma,
+-                    "k_mc": self.k_mc,
+-                },
+-            )
+-            fixed_out = run_fixed_point_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                w_init=w,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                alpha_w=float(fixed_cfg["alpha_w"]),
+-                gamma=float(fixed_cfg["gamma"]),
+-                k_mc=int(fixed_cfg["k_mc"]),
+-                batch_size=int(fixed_cfg["batch_size"]),
+-                max_iters=int(fixed_cfg["max_iters"]),
+-                tol=float(fixed_cfg["tol"]),
+-                seed=self._seed_for(iteration, 1),
+-            )
+-            w_sharp = fixed_out["w_sharp"]
+-            gap = float(np.linalg.norm(w - w_sharp))
+-            drift = (
+-                float(np.linalg.norm(w_sharp - self._prev_w_sharp))
+-                if self._prev_w_sharp is not None
+-                else float("nan")
+-            )
+-            self._prev_w_sharp = np.array(w_sharp, copy=True)
+-            results["fixed_point_gap"] = gap
+-            results["fixed_point_drift"] = drift
+-            self._append_probe(
+-                "fixed_point_probe",
+-                {
+-                    "iter": iteration,
+-                    "w_gap": gap,
+-                    "w_sharp_drift": drift,
+-                    "converged": fixed_out["converged"],
+-                    "num_iters": fixed_out["num_iters"],
+-                    "batch_size": fixed_out["batch_size"],
+-                    "tol": fixed_out["tol"],
+-                },
+-            )
++        with save_restore_rng_state():
++            if self.fixed_enabled:
++                fixed_cfg = self._with_defaults(
++                    self.fixed_cfg,
++                    {
++                        "batch_size": 4096,
++                        "max_iters": 200,
++                        "tol": 1e-4,
++                        "alpha_w": self.alpha_w,
++                        "gamma": self.gamma,
++                        "k_mc": self.k_mc,
++                    },
++                )
++                fixed_out = run_fixed_point_probe(
++                    env_config=self.env_config,
++                    theta_mu=theta_mu,
++                    theta_pi=theta_pi,
++                    w_init=w,
++                    sigma_mu=self.sigma_mu,
++                    sigma_pi=self.sigma_pi,
++                    alpha_w=float(fixed_cfg["alpha_w"]),
++                    gamma=float(fixed_cfg["gamma"]),
++                    k_mc=int(fixed_cfg["k_mc"]),
++                    batch_size=int(fixed_cfg["batch_size"]),
++                    max_iters=int(fixed_cfg["max_iters"]),
++                    tol=float(fixed_cfg["tol"]),
++                    rho_clip=self.rho_clip,
++                    disable_rho_clip=self.disable_rho_clip,
++                    seed=self._seed_for(iteration, 1),
++                )
++                w_sharp = fixed_out["w_sharp"]
++                gap = float(np.linalg.norm(w - w_sharp))
++                if self._prev_w_sharp is not None:
++                    drift = float(np.linalg.norm(w_sharp - self._prev_w_sharp))
++                    drift_defined = 1.0
++                else:
++                    drift = 0.0
++                    drift_defined = 0.0
++                self._prev_w_sharp = np.array(w_sharp, copy=True)
++                results["fixed_point_gap"] = gap
++                results["fixed_point_drift"] = drift
++                results["fixed_point_drift_defined"] = drift_defined
++                self._append_probe(
++                    "fixed_point_probe",
++                    {
++                        "iter": iteration,
++                        "w_gap": gap,
++                        "w_sharp_drift": drift,
++                        "w_sharp_drift_defined": drift_defined,
++                        "converged": fixed_out["converged"],
++                        "num_iters": fixed_out["num_iters"],
++                        "batch_size": fixed_out["batch_size"],
++                        "tol": fixed_out["tol"],
++                        "rho_mean": fixed_out["rho_mean"],
++                        "rho2_mean": fixed_out["rho2_mean"],
++                        "rho_min": fixed_out["rho_min"],
++                        "rho_max": fixed_out["rho_max"],
++                        "rho_p95": fixed_out["rho_p95"],
++                        "rho_p99": fixed_out["rho_p99"],
++                        "rho_clip": fixed_out["rho_clip"],
++                        "rho_clip_active": fixed_out["rho_clip_active"],
++                    },
++                )
+ 
+-        if self.stability_enabled:
+-            stability_cfg = self._with_defaults(
+-                self.stability_cfg,
+-                {
+-                    "batch_size": 4096,
+-                    "power_iters": 20,
+-                    "alpha_w": self.alpha_w,
+-                    "gamma": self.gamma,
+-                    "k_mc": self.k_mc,
+-                },
+-            )
+-            stability_out = run_stability_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                alpha_w=float(stability_cfg["alpha_w"]),
+-                gamma=float(stability_cfg["gamma"]),
+-                k_mc=int(stability_cfg["k_mc"]),
+-                batch_size=int(stability_cfg["batch_size"]),
+-                power_iters=int(stability_cfg["power_iters"]),
+-                seed=self._seed_for(iteration, 2),
+-            )
+-            results["stability_proxy"] = float(stability_out["stability_proxy"])
+-            self._append_probe(
+-                "stability_probe",
+-                {
+-                    "iter": iteration,
+-                    "stability_proxy": stability_out["stability_proxy"],
+-                    "power_iters": stability_out["power_iters"],
+-                    "batch_size": stability_out["batch_size"],
+-                },
+-            )
++            if self.stability_enabled:
++                stability_cfg = self._with_defaults(
++                    self.stability_cfg,
++                    {
++                        "batch_size": 4096,
++                        "power_iters": 20,
++                        "alpha_w": self.alpha_w,
++                        "gamma": self.gamma,
++                        "k_mc": self.k_mc,
++                    },
++                )
++                stability_out = run_stability_probe(
++                    env_config=self.env_config,
++                    theta_mu=theta_mu,
++                    theta_pi=theta_pi,
++                    sigma_mu=self.sigma_mu,
++                    sigma_pi=self.sigma_pi,
++                    alpha_w=float(stability_cfg["alpha_w"]),
++                    train_step_scale=self.train_step_scale,
++                    gamma=float(stability_cfg["gamma"]),
++                    k_mc=int(stability_cfg["k_mc"]),
++                    batch_size=int(stability_cfg["batch_size"]),
++                    power_iters=int(stability_cfg["power_iters"]),
++                    rho_clip=self.rho_clip,
++                    disable_rho_clip=self.disable_rho_clip,
++                    seed=self._seed_for(iteration, 2),
++                )
++                results["stability_proxy"] = float(stability_out["stability_proxy"])
++                self._append_probe(
++                    "stability_probe",
++                    {
++                        "iter": iteration,
++                        "stability_proxy": stability_out["stability_proxy"],
++                        "stability_proxy_mean": stability_out["stability_proxy_mean"],
++                        "stability_proxy_std": stability_out["stability_proxy_std"],
++                        "power_iters": stability_out["power_iters"],
++                        "batch_size": stability_out["batch_size"],
++                        "stability_probe_step_scale": stability_out["stability_probe_step_scale"],
++                        "rho_mean": stability_out["rho_mean"],
++                        "rho2_mean": stability_out["rho2_mean"],
++                        "rho_min": stability_out["rho_min"],
++                        "rho_max": stability_out["rho_max"],
++                        "rho_p95": stability_out["rho_p95"],
++                        "rho_p99": stability_out["rho_p99"],
++                        "rho_clip": stability_out["rho_clip"],
++                        "rho_clip_active": stability_out["rho_clip_active"],
++                    },
++                )
+ 
+-        if self.dist_enabled:
+-            dist_cfg = self._with_defaults(self.dist_cfg, {"num_samples": 512})
+-            dist_out = run_distribution_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                num_samples=int(dist_cfg["num_samples"]),
+-                seed=self._seed_for(iteration, 3),
+-            )
+-            results["dist_mmd2"] = float(dist_out["mmd2"])
+-            results["dist_mean_l2"] = float(dist_out["mean_l2"])
+-            self._append_probe(
+-                "distribution_probe",
+-                {
+-                    "iter": iteration,
+-                    "mmd2": dist_out["mmd2"],
+-                    "mmd_sigma": dist_out["mmd_sigma"],
+-                    "mean_l2": dist_out["mean_l2"],
+-                    "num_samples": dist_out["num_samples"],
+-                },
+-            )
++            if self.dist_enabled:
++                dist_cfg = self._with_defaults(self.dist_cfg, {"num_samples": 512, "action_samples": 64})
++                dist_out = run_distribution_probe(
++                    env_config=self.env_config,
++                    theta_mu=theta_mu,
++                    theta_pi=theta_pi,
++                    sigma_mu=self.sigma_mu,
++                    sigma_pi=self.sigma_pi,
++                    num_samples=int(dist_cfg["num_samples"]),
++                    action_samples=int(dist_cfg["action_samples"]),
++                    rho_clip=self.rho_clip,
++                    disable_rho_clip=self.disable_rho_clip,
++                    seed=self._seed_for(iteration, 3),
++                )
++                results["dist_mmd2"] = float(dist_out["mmd2"])
++                results["dist_mean_l2"] = float(dist_out["mean_l2"])
++                results["dist_action_kl"] = float(dist_out["dist_action_kl"])
++                results["dist_action_tv"] = float(dist_out["dist_action_tv"])
++                self._append_probe(
++                    "distribution_probe",
++                    {
++                        "iter": iteration,
++                        "mmd2": dist_out["mmd2"],
++                        "mmd_sigma": dist_out["mmd_sigma"],
++                        "mean_l2": dist_out["mean_l2"],
++                        "num_samples": dist_out["num_samples"],
++                        "dist_action_kl": dist_out["dist_action_kl"],
++                        "dist_action_tv": dist_out["dist_action_tv"],
++                        "action_samples": dist_out["action_samples"],
++                        "rho_mean": dist_out["rho_mean"],
++                        "rho2_mean": dist_out["rho2_mean"],
++                        "rho_min": dist_out["rho_min"],
++                        "rho_max": dist_out["rho_max"],
++                        "rho_p95": dist_out["rho_p95"],
++                        "rho_p99": dist_out["rho_p99"],
++                        "rho_clip": dist_out["rho_clip"],
++                        "rho_clip_active": dist_out["rho_clip_active"],
++                    },
++                )
++
++            if self.q_kernel_enabled and delta_cache is not None:
++                q_out = run_q_kernel_probe(
++                    delta_cache=delta_cache,
++                    td_loss=td_loss,
++                    iteration=iteration,
++                )
++                results["td_loss_from_Q"] = float(q_out["td_loss_from_Q"])
++                results["td_loss_from_Q_abs_diff"] = float(q_out["td_loss_from_Q_abs_diff"])
++                results["td_loss_from_Q_rel_diff"] = float(q_out["td_loss_from_Q_rel_diff"])
++                self._append_probe("q_kernel_probe", q_out)
+ 
+         return results
+ 
+diff --git a/tdrl_unfixed_ac/probes/manager_py.md b/tdrl_unfixed_ac/probes/manager_py.md
+deleted file mode 100644
+index 5661d6d..0000000
+--- a/tdrl_unfixed_ac/probes/manager_py.md
++++ /dev/null
+@@ -1,267 +0,0 @@
+-"""Probe manager for running diagnostics at intervals or plateaus."""
+-
+-from __future__ import annotations
+-
+-import csv
+-import json
+-from copy import deepcopy
+-from pathlib import Path
+-from typing import Any, Dict, Optional
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.probes.distribution_probe import run_distribution_probe
+-from tdrl_unfixed_ac.probes.fixed_point_probe import run_fixed_point_probe
+-from tdrl_unfixed_ac.probes.stability_probe import run_stability_probe
+-
+-
+-class ProbeManager:
+-    """Trigger probes on schedule or upon TD loss plateau."""
+-
+-    def __init__(
+-        self,
+-        config: Optional[Dict[str, Any]],
+-        *,
+-        output_dir: Path,
+-        env_config: Dict[str, Any],
+-        seed: Optional[int],
+-        alpha_w: float,
+-        gamma: float,
+-        k_mc: int,
+-        sigma_mu: float,
+-        sigma_pi: float,
+-    ) -> None:
+-        cfg = config or {}
+-        self.enabled = bool(cfg.get("enabled", False))
+-        self.every = int(cfg.get("every", 0))
+-
+-        self.plateau_cfg = deepcopy(cfg.get("plateau", {}))
+-        self.plateau_enabled = bool(self.plateau_cfg.get("enabled", False))
+-        self.plateau_window = int(self.plateau_cfg.get("window", 5))
+-        self.plateau_tol = float(self.plateau_cfg.get("tol", 1e-3))
+-        self.plateau_cooldown = int(self.plateau_cfg.get("cooldown", self.plateau_window))
+-        self.plateau_min_iter = int(self.plateau_cfg.get("min_iter", self.plateau_window))
+-
+-        self.fixed_cfg = deepcopy(cfg.get("fixed_point", {}))
+-        self.fixed_enabled = bool(self.fixed_cfg.get("enabled", True))
+-        self.stability_cfg = deepcopy(cfg.get("stability", {}))
+-        self.stability_enabled = bool(self.stability_cfg.get("enabled", True))
+-        self.dist_cfg = deepcopy(cfg.get("distribution", {}))
+-        self.dist_enabled = bool(self.dist_cfg.get("enabled", True))
+-
+-        self.env_config = deepcopy(env_config)
+-        self.seed = seed
+-        self.alpha_w = float(alpha_w)
+-        self.gamma = float(gamma)
+-        self.k_mc = int(k_mc)
+-        self.sigma_mu = float(sigma_mu)
+-        self.sigma_pi = float(sigma_pi)
+-
+-        self.output_dir = Path(output_dir) / "probes"
+-        if self.enabled:
+-            self.output_dir.mkdir(parents=True, exist_ok=True)
+-
+-        self._td_history: list[float] = []
+-        self._prev_w_sharp: Optional[np.ndarray] = None
+-        self._last_probe_iter: Optional[int] = None
+-        self._last_plateau_iter = -self.plateau_cooldown - 1
+-
+-    def log_defaults(self) -> Dict[str, float]:
+-        defaults: Dict[str, float] = {}
+-        if not self.enabled:
+-            return defaults
+-        if self.fixed_enabled:
+-            defaults["fixed_point_gap"] = float("nan")
+-            defaults["fixed_point_drift"] = float("nan")
+-        if self.stability_enabled:
+-            defaults["stability_proxy"] = float("nan")
+-        if self.dist_enabled:
+-            defaults["dist_mmd2"] = float("nan")
+-            defaults["dist_mean_l2"] = float("nan")
+-        return defaults
+-
+-    def maybe_run(
+-        self,
+-        *,
+-        iteration: int,
+-        td_loss: float,
+-        w: np.ndarray,
+-        theta_mu: np.ndarray,
+-        theta_pi: np.ndarray,
+-    ) -> Dict[str, float]:
+-        if not self.enabled:
+-            return {}
+-
+-        self._td_history.append(float(td_loss))
+-        if self._last_probe_iter == iteration:
+-            return {}
+-
+-        should_run = self._should_run(iteration)
+-        if not should_run:
+-            return {}
+-
+-        self._last_probe_iter = iteration
+-        results: Dict[str, float] = {}
+-
+-        if self.fixed_enabled:
+-            fixed_cfg = self._with_defaults(
+-                self.fixed_cfg,
+-                {
+-                    "batch_size": 4096,
+-                    "max_iters": 200,
+-                    "tol": 1e-4,
+-                    "alpha_w": self.alpha_w,
+-                    "gamma": self.gamma,
+-                    "k_mc": self.k_mc,
+-                },
+-            )
+-            fixed_out = run_fixed_point_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                w_init=w,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                alpha_w=float(fixed_cfg["alpha_w"]),
+-                gamma=float(fixed_cfg["gamma"]),
+-                k_mc=int(fixed_cfg["k_mc"]),
+-                batch_size=int(fixed_cfg["batch_size"]),
+-                max_iters=int(fixed_cfg["max_iters"]),
+-                tol=float(fixed_cfg["tol"]),
+-                seed=self._seed_for(iteration, 1),
+-            )
+-            w_sharp = fixed_out["w_sharp"]
+-            gap = float(np.linalg.norm(w - w_sharp))
+-            drift = (
+-                float(np.linalg.norm(w_sharp - self._prev_w_sharp))
+-                if self._prev_w_sharp is not None
+-                else float("nan")
+-            )
+-            self._prev_w_sharp = np.array(w_sharp, copy=True)
+-            results["fixed_point_gap"] = gap
+-            results["fixed_point_drift"] = drift
+-            self._append_probe(
+-                "fixed_point_probe",
+-                {
+-                    "iter": iteration,
+-                    "w_gap": gap,
+-                    "w_sharp_drift": drift,
+-                    "converged": fixed_out["converged"],
+-                    "num_iters": fixed_out["num_iters"],
+-                    "batch_size": fixed_out["batch_size"],
+-                    "tol": fixed_out["tol"],
+-                },
+-            )
+-
+-        if self.stability_enabled:
+-            stability_cfg = self._with_defaults(
+-                self.stability_cfg,
+-                {
+-                    "batch_size": 4096,
+-                    "power_iters": 20,
+-                    "alpha_w": self.alpha_w,
+-                    "gamma": self.gamma,
+-                    "k_mc": self.k_mc,
+-                },
+-            )
+-            stability_out = run_stability_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                alpha_w=float(stability_cfg["alpha_w"]),
+-                gamma=float(stability_cfg["gamma"]),
+-                k_mc=int(stability_cfg["k_mc"]),
+-                batch_size=int(stability_cfg["batch_size"]),
+-                power_iters=int(stability_cfg["power_iters"]),
+-                seed=self._seed_for(iteration, 2),
+-            )
+-            results["stability_proxy"] = float(stability_out["stability_proxy"])
+-            self._append_probe(
+-                "stability_probe",
+-                {
+-                    "iter": iteration,
+-                    "stability_proxy": stability_out["stability_proxy"],
+-                    "power_iters": stability_out["power_iters"],
+-                    "batch_size": stability_out["batch_size"],
+-                },
+-            )
+-
+-        if self.dist_enabled:
+-            dist_cfg = self._with_defaults(self.dist_cfg, {"num_samples": 512})
+-            dist_out = run_distribution_probe(
+-                env_config=self.env_config,
+-                theta_mu=theta_mu,
+-                theta_pi=theta_pi,
+-                sigma_mu=self.sigma_mu,
+-                sigma_pi=self.sigma_pi,
+-                num_samples=int(dist_cfg["num_samples"]),
+-                seed=self._seed_for(iteration, 3),
+-            )
+-            results["dist_mmd2"] = float(dist_out["mmd2"])
+-            results["dist_mean_l2"] = float(dist_out["mean_l2"])
+-            self._append_probe(
+-                "distribution_probe",
+-                {
+-                    "iter": iteration,
+-                    "mmd2": dist_out["mmd2"],
+-                    "mmd_sigma": dist_out["mmd_sigma"],
+-                    "mean_l2": dist_out["mean_l2"],
+-                    "num_samples": dist_out["num_samples"],
+-                },
+-            )
+-
+-        return results
+-
+-    def _should_run(self, iteration: int) -> bool:
+-        if self.every > 0 and (iteration + 1) % self.every == 0:
+-            return True
+-        if self.plateau_enabled and iteration >= self.plateau_min_iter:
+-            if iteration - self._last_plateau_iter < self.plateau_cooldown:
+-                return False
+-            if len(self._td_history) < self.plateau_window:
+-                return False
+-            window = np.asarray(self._td_history[-self.plateau_window :], dtype=float)
+-            if np.isnan(window).any():
+-                return False
+-            spread = float(np.max(window) - np.min(window))
+-            mean = float(np.mean(window))
+-            tol = self.plateau_tol * max(1.0, abs(mean))
+-            if spread <= tol:
+-                self._last_plateau_iter = iteration
+-                return True
+-        return False
+-
+-    def _seed_for(self, iteration: int, offset: int) -> int:
+-        base = int(self.seed) if self.seed is not None else 0
+-        return int((base + 10007 * (iteration + 1) + 97 * offset) % (2**31 - 1))
+-
+-    def _append_probe(self, stem: str, row: Dict[str, Any]) -> None:
+-        if not self.enabled:
+-            return
+-        csv_path = self.output_dir / f"{stem}.csv"
+-        json_path = self.output_dir / f"{stem}.jsonl"
+-
+-        if not csv_path.exists():
+-            fieldnames = list(row.keys())
+-            with csv_path.open("w", newline="") as handle:
+-                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+-                writer.writeheader()
+-                writer.writerow(row)
+-        else:
+-            with csv_path.open("r", newline="") as handle:
+-                reader = csv.reader(handle)
+-                fieldnames = next(reader, list(row.keys()))
+-            with csv_path.open("a", newline="") as handle:
+-                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+-                writer.writerow(row)
+-
+-        with json_path.open("a") as handle:
+-            handle.write(json.dumps(row) + "\n")
+-
+-    @staticmethod
+-    def _with_defaults(cfg: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+-        merged = dict(defaults)
+-        merged.update(cfg)
+-        return merged
+diff --git a/tdrl_unfixed_ac/probes/stability_probe.py b/tdrl_unfixed_ac/probes/stability_probe.py
+index d1b0379..58c53d9 100644
+--- a/tdrl_unfixed_ac/probes/stability_probe.py
++++ b/tdrl_unfixed_ac/probes/stability_probe.py
+@@ -8,7 +8,7 @@ import numpy as np
+ 
+ from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+ from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import collect_critic_batch
++from tdrl_unfixed_ac.probes.common import collect_critic_batch, rho_clip_metadata, summarize_rho
+ 
+ 
+ def run_stability_probe(
+@@ -19,49 +19,81 @@ def run_stability_probe(
+     sigma_mu: float,
+     sigma_pi: float,
+     alpha_w: float,
++    train_step_scale: float,
+     gamma: float,
+     k_mc: int,
+     batch_size: int,
+     power_iters: int,
++    rho_clip: Optional[float],
++    disable_rho_clip: bool,
+     seed: Optional[int],
+ ) -> Dict[str, Any]:
+     """Estimate local amplification (spectral radius proxy) for critic updates."""
+     rng = np.random.default_rng(seed)
+-    env = TorusGobletGhostEnv(config=env_config, rng=rng)
++    v_max = float(env_config.get("v_max", 1.0))
++    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu), v_max=v_max)
++    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi), v_max=v_max)
+ 
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
++    def _estimate_proxy(batch: Dict[str, np.ndarray], local_rng: np.random.Generator) -> float:
++        phi = batch["phi"]
++        diff = gamma * batch["bar_phi"] - phi
++        rho = batch["rho"]
++        feature_dim = phi.shape[1]
+ 
+-    batch = collect_critic_batch(env, mu_policy, pi_policy, rng, batch_size, k_mc)
++        v = local_rng.normal(size=feature_dim)
++        v_norm = float(np.linalg.norm(v))
++        if v_norm <= 1e-12:
++            v = np.ones(feature_dim, dtype=float) / np.sqrt(feature_dim)
++        else:
++            v = v / v_norm
+ 
+-    phi = batch["phi"]
+-    diff = gamma * batch["bar_phi"] - phi
+-    rho = batch["rho"]
+-    feature_dim = phi.shape[1]
+-    scale = np.sqrt(feature_dim)
++        spectral = float("nan")
++        for _ in range(int(power_iters)):
++            dot_term = diff @ v
++            update = (rho * dot_term)[:, None] * phi
++            # Align probe step size with training critic updates.
++            v_next = v + train_step_scale * update.sum(axis=0)
++            norm_next = float(np.linalg.norm(v_next))
++            if norm_next <= 1e-12:
++                spectral = 0.0
++                v = v_next
++                break
++            spectral = norm_next
++            v = v_next / norm_next
++        return float(spectral)
+ 
+-    v = rng.normal(size=feature_dim)
+-    v_norm = float(np.linalg.norm(v))
+-    if v_norm <= 1e-12:
+-        v = np.ones(feature_dim, dtype=float) / np.sqrt(feature_dim)
+-    else:
+-        v = v / v_norm
++    reps = max(1, int(k_mc))
++    proxies: list[float] = []
++    rho_samples = []
++    for _ in range(reps):
++        env = TorusGobletGhostEnv(config=env_config, rng=rng)
++        batch = collect_critic_batch(
++            env,
++            mu_policy,
++            pi_policy,
++            rng,
++            batch_size,
++            k_mc,
++            rho_clip=rho_clip,
++            disable_rho_clip=disable_rho_clip,
++        )
++        rho_samples.append(batch["rho"])
++        proxies.append(_estimate_proxy(batch, rng))
+ 
+-    spectral = float("nan")
+-    for _ in range(int(power_iters)):
+-        dot_term = diff @ v
+-        update = (rho * dot_term)[:, None] * phi
+-        v_next = v + (alpha_w / scale) * update.mean(axis=0)
+-        norm_next = float(np.linalg.norm(v_next))
+-        if norm_next <= 1e-12:
+-            spectral = 0.0
+-            v = v_next
+-            break
+-        spectral = norm_next
+-        v = v_next / norm_next
++    proxies_arr = np.asarray(proxies, dtype=float)
++    stability_proxy_mean = float(np.mean(proxies_arr))
++    stability_proxy_std = float(np.std(proxies_arr))
++    rho_all = np.concatenate(rho_samples, axis=0) if rho_samples else np.asarray([], dtype=float)
++    rho_stats = summarize_rho(rho_all)
++    rho_meta = rho_clip_metadata(rho_clip, disable_rho_clip)
+ 
+     return {
+-        "stability_proxy": float(spectral),
++        "stability_proxy": stability_proxy_mean,
++        "stability_proxy_mean": stability_proxy_mean,
++        "stability_proxy_std": stability_proxy_std,
+         "power_iters": int(power_iters),
+         "batch_size": int(batch_size),
++        "stability_probe_step_scale": float(train_step_scale),
++        **rho_stats,
++        **rho_meta,
+     }
+diff --git a/tdrl_unfixed_ac/probes/stability_probe_py.md b/tdrl_unfixed_ac/probes/stability_probe_py.md
+deleted file mode 100644
+index d1b0379..0000000
+--- a/tdrl_unfixed_ac/probes/stability_probe_py.md
++++ /dev/null
+@@ -1,67 +0,0 @@
+-"""Stability probe via power iteration on linearized critic updates."""
+-
+-from __future__ import annotations
+-
+-from typing import Any, Dict, Optional
+-
+-import numpy as np
+-
+-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+-from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
+-from tdrl_unfixed_ac.probes.common import collect_critic_batch
+-
+-
+-def run_stability_probe(
+-    *,
+-    env_config: Dict[str, Any],
+-    theta_mu: np.ndarray,
+-    theta_pi: np.ndarray,
+-    sigma_mu: float,
+-    sigma_pi: float,
+-    alpha_w: float,
+-    gamma: float,
+-    k_mc: int,
+-    batch_size: int,
+-    power_iters: int,
+-    seed: Optional[int],
+-) -> Dict[str, Any]:
+-    """Estimate local amplification (spectral radius proxy) for critic updates."""
+-    rng = np.random.default_rng(seed)
+-    env = TorusGobletGhostEnv(config=env_config, rng=rng)
+-
+-    mu_policy = LinearGaussianPolicy(theta=np.array(theta_mu, copy=True), sigma=float(sigma_mu))
+-    pi_policy = LinearGaussianPolicy(theta=np.array(theta_pi, copy=True), sigma=float(sigma_pi))
+-
+-    batch = collect_critic_batch(env, mu_policy, pi_policy, rng, batch_size, k_mc)
+-
+-    phi = batch["phi"]
+-    diff = gamma * batch["bar_phi"] - phi
+-    rho = batch["rho"]
+-    feature_dim = phi.shape[1]
+-    scale = np.sqrt(feature_dim)
+-
+-    v = rng.normal(size=feature_dim)
+-    v_norm = float(np.linalg.norm(v))
+-    if v_norm <= 1e-12:
+-        v = np.ones(feature_dim, dtype=float) / np.sqrt(feature_dim)
+-    else:
+-        v = v / v_norm
+-
+-    spectral = float("nan")
+-    for _ in range(int(power_iters)):
+-        dot_term = diff @ v
+-        update = (rho * dot_term)[:, None] * phi
+-        v_next = v + (alpha_w / scale) * update.mean(axis=0)
+-        norm_next = float(np.linalg.norm(v_next))
+-        if norm_next <= 1e-12:
+-            spectral = 0.0
+-            v = v_next
+-            break
+-        spectral = norm_next
+-        v = v_next / norm_next
+-
+-    return {
+-        "stability_proxy": float(spectral),
+-        "power_iters": int(power_iters),
+-        "batch_size": int(batch_size),
+-    }
+diff --git a/tdrl_unfixed_ac/utils/__init___py.md b/tdrl_unfixed_ac/utils/__init___py.md
+deleted file mode 100644
+index 7a64c10..0000000
+--- a/tdrl_unfixed_ac/utils/__init___py.md
++++ /dev/null
+@@ -1,7 +0,0 @@
+-"""Utility helpers for seeding and geometry."""
+-
+-from .seeding import Seeder
+-from .geometry import wrap_torus, torus_delta, torus_distance
+-
+-__all__ = ["Seeder", "wrap_torus", "torus_delta", "torus_distance"]
+-
+diff --git a/tdrl_unfixed_ac/utils/geometry_py.md b/tdrl_unfixed_ac/utils/geometry_py.md
+deleted file mode 100644
+index bce1b25..0000000
+--- a/tdrl_unfixed_ac/utils/geometry_py.md
++++ /dev/null
+@@ -1,23 +0,0 @@
+-"""Geometry helpers for torus domains."""
+-
+-from __future__ import annotations
+-
+-import numpy as np
+-
+-
+-def wrap_torus(x: np.ndarray, size: float) -> np.ndarray:
+-    """Wrap coordinates onto a torus of given size."""
+-    return np.mod(x, size)
+-
+-
+-def torus_delta(a: np.ndarray, b: np.ndarray, size: float) -> np.ndarray:
+-    """Shortest signed delta on a torus from a to b."""
+-    half = 0.5 * size
+-    return (b - a + half) % size - half
+-
+-
+-def torus_distance(a: np.ndarray, b: np.ndarray, size: float) -> float:
+-    """Euclidean distance using torus-aware shortest delta."""
+-    delta = torus_delta(a, b, size)
+-    return float(np.linalg.norm(delta))
+-
+diff --git a/tdrl_unfixed_ac/utils/seeding.py b/tdrl_unfixed_ac/utils/seeding.py
+index b4e7859..fcf08ec 100644
+--- a/tdrl_unfixed_ac/utils/seeding.py
++++ b/tdrl_unfixed_ac/utils/seeding.py
+@@ -2,11 +2,17 @@
+ 
+ from __future__ import annotations
+ 
++from contextlib import contextmanager
+ from dataclasses import dataclass
+-from typing import Optional
++from typing import Generator, Optional
+ 
+ import numpy as np
+ 
++try:  # pragma: no cover - torch is optional
++    import torch  # type: ignore
++except Exception:  # pragma: no cover - optional dependency
++    torch = None
++
+ 
+ @dataclass
+ class Seeder:
+@@ -30,3 +36,22 @@ class Seeder:
+         self.rng = np.random.default_rng(self.seed_sequence)
+         return self.rng
+ 
++
++@contextmanager
++def save_restore_rng_state() -> Generator[None, None, None]:
++    """Save and restore global RNG state for numpy/torch (if available)."""
++    np_state = np.random.get_state()
++    torch_state = None
++    torch_cuda_state = None
++    if torch is not None:
++        torch_state = torch.random.get_rng_state()
++        if torch.cuda.is_available():
++            torch_cuda_state = torch.cuda.get_rng_state_all()
++    try:
++        yield
++    finally:
++        np.random.set_state(np_state)
++        if torch is not None and torch_state is not None:
++            torch.random.set_rng_state(torch_state)
++            if torch_cuda_state is not None:
++                torch.cuda.set_rng_state_all(torch_cuda_state)
+diff --git a/tdrl_unfixed_ac/utils/seeding_py.md b/tdrl_unfixed_ac/utils/seeding_py.md
+deleted file mode 100644
+index b4e7859..0000000
+--- a/tdrl_unfixed_ac/utils/seeding_py.md
++++ /dev/null
+@@ -1,32 +0,0 @@
+-"""Deterministic seeding utilities."""
+-
+-from __future__ import annotations
+-
+-from dataclasses import dataclass
+-from typing import Optional
+-
+-import numpy as np
+-
+-
+-@dataclass
+-class Seeder:
+-    """Wrapper around numpy SeedSequence to simplify reproducible RNG."""
+-
+-    seed: Optional[int] = None
+-
+-    def __post_init__(self) -> None:
+-        self.seed_sequence = np.random.SeedSequence(self.seed)
+-        self.rng = np.random.default_rng(self.seed_sequence)
+-
+-    def spawn(self) -> np.random.Generator:
+-        """Spawn a child generator deterministically."""
+-        child_seq = self.seed_sequence.spawn(1)[0]
+-        return np.random.default_rng(child_seq)
+-
+-    def reseed(self, seed: Optional[int]) -> np.random.Generator:
+-        """Reset to a new base seed and return the generator."""
+-        self.seed = seed
+-        self.seed_sequence = np.random.SeedSequence(self.seed)
+-        self.rng = np.random.default_rng(self.seed_sequence)
+-        return self.rng
+-

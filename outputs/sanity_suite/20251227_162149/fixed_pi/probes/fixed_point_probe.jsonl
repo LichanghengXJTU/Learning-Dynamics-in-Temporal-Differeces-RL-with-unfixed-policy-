@@ -1,0 +1,5 @@
+{"iter": 0, "w_gap": 0.024988697368814428, "w_sharp_drift": NaN, "converged": false, "num_iters": 200, "batch_size": 512, "tol": 1e-06}
+{"iter": 1, "w_gap": 0.02680930707890348, "w_sharp_drift": 0.019816430091339574, "converged": false, "num_iters": 200, "batch_size": 512, "tol": 1e-06}
+{"iter": 2, "w_gap": 0.016023719837537708, "w_sharp_drift": 0.021203625298251556, "converged": false, "num_iters": 200, "batch_size": 512, "tol": 1e-06}
+{"iter": 3, "w_gap": 0.020925461454292606, "w_sharp_drift": 0.017799528865709978, "converged": false, "num_iters": 200, "batch_size": 512, "tol": 1e-06}
+{"iter": 4, "w_gap": 0.021609671234043917, "w_sharp_drift": 0.017212841740933394, "converged": false, "num_iters": 200, "batch_size": 512, "tol": 1e-06}

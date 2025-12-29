@@ -1,0 +1,13 @@
+beta_values:
+- 0.005
+- 0.4
+alpha_w_values:
+- 0.02
+- 0.24
+offpolicy_axis: sigma_mu
+offpolicy_values:
+- 0.175
+- 0.7
+seed_values:
+- 0
+base_config: configs/train_plateau.yaml

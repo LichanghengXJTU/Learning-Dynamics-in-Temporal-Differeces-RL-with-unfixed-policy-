@@ -1,0 +1,14 @@
+Run: outputs/short_runs/20251228_002251/instability
+Metrics:
+  mean_rho2: 0.4259
+  stability_proxy: 1
+  fixed_point_drift: 0.04711
+  dist_mmd2: 0.03143
+  dist_action_kl: 0.62
+  dist_action_tv: 0.3338
+
+Suggestions:
+- instability run too stable -> increase alpha_w/alpha_pi or reduce beta/p_mix.
+
+Rerun commands:
+python scripts/run_train.py --config configs/train_instability.yaml --output-dir outputs/short_runs/instability_fix --alpha-w 0.3 --alpha-pi 0.2 --beta 0.005 --p-mix 0.0 --outer-iters 80

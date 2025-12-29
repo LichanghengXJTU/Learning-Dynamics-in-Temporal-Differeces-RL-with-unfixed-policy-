@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional
+from typing import Generator, Optional
 
 import numpy as np
+
+try:  # pragma: no cover - torch is optional
+    import torch  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    torch = None
 
 
 @dataclass
@@ -30,3 +36,22 @@ class Seeder:
         self.rng = np.random.default_rng(self.seed_sequence)
         return self.rng
 
+
+@contextmanager
+def save_restore_rng_state() -> Generator[None, None, None]:
+    """Save and restore global RNG state for numpy/torch (if available)."""
+    np_state = np.random.get_state()
+    torch_state = None
+    torch_cuda_state = None
+    if torch is not None:
+        torch_state = torch.random.get_rng_state()
+        if torch.cuda.is_available():
+            torch_cuda_state = torch.cuda.get_rng_state_all()
+    try:
+        yield
+    finally:
+        np.random.set_state(np_state)
+        if torch is not None and torch_state is not None:
+            torch.random.set_rng_state(torch_state)
+            if torch_cuda_state is not None:
+                torch.cuda.set_rng_state_all(torch_cuda_state)

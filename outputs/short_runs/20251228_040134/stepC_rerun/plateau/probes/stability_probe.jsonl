@@ -1,0 +1,2 @@
+{"iter": 5, "stability_proxy": 0.9999857059541961, "stability_proxy_mean": 0.9999857059541961, "stability_proxy_std": 1.6463722767948896e-06, "power_iters": 20, "batch_size": 4096, "stability_probe_step_scale": 2.5e-05}
+{"iter": 9, "stability_proxy": 0.9999847595960374, "stability_proxy_mean": 0.9999847595960374, "stability_proxy_std": 1.4058990733702225e-06, "power_iters": 20, "batch_size": 4096, "stability_probe_step_scale": 2.5e-05}

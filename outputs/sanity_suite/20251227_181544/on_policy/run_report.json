@@ -1,0 +1,500 @@
+{
+  "meta": {
+    "timestamp": "2025-12-27T18:15:46",
+    "run_dir": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy",
+    "host": "Enhuis-Mac-Studio.local",
+    "git_commit": "a84b364b797739f6a6669e4a8308245a452d798f"
+  },
+  "config": {
+    "resolved": {
+      "K_mc": 2,
+      "alpha_pi": 0.05,
+      "alpha_w": 0.1,
+      "beta": 1.0,
+      "check_name": "on_policy",
+      "checkpoint_every": 1,
+      "env": {
+        "actor_feature_dim": 64,
+        "feature_dim": 256,
+        "p_mix": 0.1
+      },
+      "env_config_path": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml",
+      "gamma": 0.95,
+      "horizon": 50,
+      "log_every": 1,
+      "outer_iters": 5,
+      "output_dir": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy",
+      "probes": {
+        "distribution": {
+          "enabled": true,
+          "num_samples": 512
+        },
+        "enabled": true,
+        "every": 1,
+        "fixed_point": {
+          "batch_size": 512,
+          "enabled": true,
+          "k_mc": 2,
+          "max_iters": 200,
+          "tol": "1e-6"
+        },
+        "plateau": {
+          "cooldown": 5,
+          "enabled": false,
+          "min_iter": 5,
+          "tol": 0.001,
+          "window": 5
+        },
+        "stability": {
+          "batch_size": 512,
+          "enabled": true,
+          "k_mc": 2,
+          "n_power_iters": 20,
+          "power_iters": 20
+        }
+      },
+      "report_every": 0,
+      "report_every_seconds": 0,
+      "resume": false,
+      "resume_from": null,
+      "seed": 0,
+      "sigma_mu": 0.2,
+      "sigma_pi": 0.2,
+      "theta_init_scale": 0.1,
+      "theta_radius": 5.0,
+      "trajectories": 2,
+      "w_init_scale": 0.1
+    },
+    "key_hparams": {
+      "seed": 0,
+      "outer_iters": 5,
+      "horizon": 50,
+      "gamma": 0.95,
+      "alpha_w": 0.1,
+      "alpha_pi": 0.05,
+      "beta": 1.0,
+      "sigma_pi": 0.2,
+      "sigma_mu": 0.2,
+      "feature_dim": 256,
+      "p_mix": 0.1,
+      "check_name": "on_policy"
+    }
+  },
+  "files": {
+    "learning_curves_path": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy/learning_curves.csv",
+    "probes_paths": [
+      "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy/probes/distribution_probe.csv",
+      "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy/probes/fixed_point_probe.csv",
+      "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy/probes/stability_probe.csv"
+    ],
+    "stdout_log_path": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy/stdout.log",
+    "checkpoint_dir": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_181544/on_policy/checkpoints"
+  },
+  "health_checks": {
+    "no_nan_inf": {
+      "pass": true,
+      "reason": "all core columns finite",
+      "observed": {
+        "nan_count": 0,
+        "inf_count": 0,
+        "nan_cols": [],
+        "inf_cols": [],
+        "core_cols": [
+          "critic_teacher_error",
+          "mean_rho2",
+          "td_loss",
+          "tracking_gap",
+          "w_norm"
+        ]
+      },
+      "applicable": true
+    },
+    "probe_missing_values": {
+      "pass": true,
+      "reason": "all probe columns finite",
+      "observed": {
+        "nan_count": 0,
+        "inf_count": 0,
+        "missing_count": 0,
+        "nan_cols": [],
+        "inf_cols": [],
+        "probe_cols": [
+          "dist_mean_l2",
+          "dist_mmd2",
+          "fixed_point_drift",
+          "fixed_point_drift_defined",
+          "fixed_point_gap",
+          "stability_proxy"
+        ],
+        "probes_enabled": true,
+        "probes_every": 1,
+        "strict_mode": true
+      },
+      "applicable": true
+    },
+    "monotone_time": {
+      "pass": true,
+      "reason": "time is strictly increasing",
+      "observed": {
+        "time_col": "iter",
+        "first_violation_index": null
+      },
+      "applicable": true
+    },
+    "rho_sane": {
+      "pass": true,
+      "reason": "rho within threshold",
+      "observed": {
+        "rho_column": "mean_rho2",
+        "max": 1.0,
+        "threshold": 1000.0
+      },
+      "applicable": true
+    },
+    "on_policy_expected": {
+      "pass": true,
+      "reason": "on-policy expectations met",
+      "observed": {
+        "mean_rho2": 1.0,
+        "tracking_gap": 0.0,
+        "dist_mmd2": 0.020349567022197035,
+        "threshold": 0.0783317,
+        "num_samples": 512.0,
+        "mmd_sigma": 2.3673434135851323
+      },
+      "applicable": true
+    },
+    "no_bootstrap_expected": {
+      "pass": true,
+      "reason": "not applicable",
+      "observed": {
+        "gamma": 0.95
+      },
+      "applicable": false
+    },
+    "fixed_pi_expected": {
+      "pass": true,
+      "reason": "not applicable",
+      "observed": {
+        "alpha_pi": 0.05
+      },
+      "applicable": false
+    }
+  },
+  "summary_metrics": {
+    "learning_curves": {
+      "td_loss": {
+        "last": 0.00017556309856472368,
+        "min": 3.742315070264404e-05,
+        "max": 0.00017556309856472368,
+        "mean_last_k": 8.754167755243279e-05,
+        "slope_last_k": 2.330500106345391e-05
+      },
+      "w_norm": {
+        "last": 1.5482531723208302,
+        "min": 1.5482531723208302,
+        "max": 1.5482847288091095,
+        "mean_last_k": 1.5482761057167573,
+        "slope_last_k": -7.367730418050833e-06
+      },
+      "mean_rho2": {
+        "last": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "mean_last_k": 1.0,
+        "slope_last_k": 0.0
+      },
+      "tracking_gap": {
+        "last": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "mean_last_k": 0.0,
+        "slope_last_k": 0.0
+      },
+      "critic_teacher_error": {
+        "last": 0.02238142231481026,
+        "min": 0.02238142231481026,
+        "max": 0.022386097718609874,
+        "mean_last_k": 0.022384080934065798,
+        "slope_last_k": -1.0878796881365339e-06
+      }
+    },
+    "probes": {
+      "distribution_probe": {
+        "iter": {
+          "last": 4.0,
+          "min": 0.0,
+          "max": 4.0,
+          "mean_last_k": 2.0,
+          "slope_last_k": 1.0
+        },
+        "mean_l2": {
+          "last": 0.346025674224485,
+          "min": 0.346025674224485,
+          "max": 0.8864182630741991,
+          "mean_last_k": 0.6041589185372811,
+          "slope_last_k": -0.11328290240025174
+        },
+        "mmd2": {
+          "last": 0.020349567022197035,
+          "min": 0.020349567022197035,
+          "max": 0.06437985762221554,
+          "mean_last_k": 0.03843787433118277,
+          "slope_last_k": -0.009162170960439354
+        },
+        "mmd_sigma": {
+          "last": 2.3673434135851323,
+          "min": 2.345202999728695,
+          "max": 2.3673434135851323,
+          "mean_last_k": 2.358310311203154,
+          "slope_last_k": 0.00015061961947377968
+        },
+        "num_samples": {
+          "last": 512.0,
+          "min": 512.0,
+          "max": 512.0,
+          "mean_last_k": 512.0,
+          "slope_last_k": 0.0
+        }
+      },
+      "fixed_point_probe": {
+        "batch_size": {
+          "last": 512.0,
+          "min": 512.0,
+          "max": 512.0,
+          "mean_last_k": 512.0,
+          "slope_last_k": 0.0
+        },
+        "iter": {
+          "last": 4.0,
+          "min": 0.0,
+          "max": 4.0,
+          "mean_last_k": 2.0,
+          "slope_last_k": 1.0
+        },
+        "num_iters": {
+          "last": 200.0,
+          "min": 200.0,
+          "max": 200.0,
+          "mean_last_k": 200.0,
+          "slope_last_k": 0.0
+        },
+        "tol": {
+          "last": 1e-06,
+          "min": 1e-06,
+          "max": 1e-06,
+          "mean_last_k": 1e-06,
+          "slope_last_k": 0.0
+        },
+        "w_gap": {
+          "last": 0.025008419192704683,
+          "min": 0.014327664484505339,
+          "max": 0.025008419192704683,
+          "mean_last_k": 0.02107904547757161,
+          "slope_last_k": 0.0011406250840344204
+        },
+        "w_sharp_drift": {
+          "last": 0.015239748699403508,
+          "min": 0.0,
+          "max": 0.018677129069191528,
+          "mean_last_k": 0.013101567914811601,
+          "slope_last_k": 0.0033773395063368336
+        },
+        "w_sharp_drift_defined": {
+          "last": 1.0,
+          "min": 0.0,
+          "max": 1.0,
+          "mean_last_k": 0.8,
+          "slope_last_k": 0.2
+        }
+      },
+      "stability_probe": {
+        "batch_size": {
+          "last": 512.0,
+          "min": 512.0,
+          "max": 512.0,
+          "mean_last_k": 512.0,
+          "slope_last_k": 0.0
+        },
+        "iter": {
+          "last": 4.0,
+          "min": 0.0,
+          "max": 4.0,
+          "mean_last_k": 2.0,
+          "slope_last_k": 1.0
+        },
+        "power_iters": {
+          "last": 20.0,
+          "min": 20.0,
+          "max": 20.0,
+          "mean_last_k": 20.0,
+          "slope_last_k": 0.0
+        },
+        "stability_proxy": {
+          "last": 0.9999934827737278,
+          "min": 0.9999920359481093,
+          "max": 0.9999934827737278,
+          "mean_last_k": 0.9999927361889469,
+          "slope_last_k": 1.3391082681613042e-07
+        }
+      }
+    }
+  },
+  "samples": {
+    "head_rows": [
+      {
+        "iter": 0.0,
+        "td_loss": 3.742315070264404e-05,
+        "critic_teacher_error": 0.022386097718609874,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482847288091095,
+        "fixed_point_gap": 0.020518126968341065,
+        "fixed_point_drift": 0.0,
+        "fixed_point_drift_defined": 0.0,
+        "stability_proxy": 0.9999925544361736,
+        "dist_mmd2": 0.06437985762221554,
+        "dist_mean_l2": 0.8864182630741991
+      },
+      {
+        "iter": 1.0,
+        "td_loss": 9.133093379136516e-05,
+        "critic_teacher_error": 0.022385113226645742,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482844797364614,
+        "fixed_point_gap": 0.021557675175344997,
+        "fixed_point_drift": 0.015383231404630208,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999930626767822,
+        "dist_mmd2": 0.03638746121735248,
+        "dist_mean_l2": 0.5973546651773209
+      },
+      {
+        "iter": 2.0,
+        "td_loss": 8.52901560016861e-05,
+        "critic_teacher_error": 0.022384186172899508,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482842323085462,
+        "fixed_point_gap": 0.014327664484505339,
+        "fixed_point_drift": 0.01620773040083277,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999920359481093,
+        "dist_mmd2": 0.03824615298115286,
+        "dist_mean_l2": 0.6456851713361684
+      },
+      {
+        "iter": 3.0,
+        "td_loss": 4.8101048701744974e-05,
+        "critic_teacher_error": 0.022383585237363605,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482739154088396,
+        "fixed_point_gap": 0.023983341566961965,
+        "fixed_point_drift": 0.018677129069191528,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999925451099421,
+        "dist_mmd2": 0.03282633281299596,
+        "dist_mean_l2": 0.5453108188742317
+      },
+      {
+        "iter": 4.0,
+        "td_loss": 0.00017556309856472368,
+        "critic_teacher_error": 0.02238142231481026,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482531723208302,
+        "fixed_point_gap": 0.025008419192704683,
+        "fixed_point_drift": 0.015239748699403508,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999934827737278,
+        "dist_mmd2": 0.020349567022197035,
+        "dist_mean_l2": 0.346025674224485
+      }
+    ],
+    "tail_rows": [
+      {
+        "iter": 0.0,
+        "td_loss": 3.742315070264404e-05,
+        "critic_teacher_error": 0.022386097718609874,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482847288091095,
+        "fixed_point_gap": 0.020518126968341065,
+        "fixed_point_drift": 0.0,
+        "fixed_point_drift_defined": 0.0,
+        "stability_proxy": 0.9999925544361736,
+        "dist_mmd2": 0.06437985762221554,
+        "dist_mean_l2": 0.8864182630741991
+      },
+      {
+        "iter": 1.0,
+        "td_loss": 9.133093379136516e-05,
+        "critic_teacher_error": 0.022385113226645742,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482844797364614,
+        "fixed_point_gap": 0.021557675175344997,
+        "fixed_point_drift": 0.015383231404630208,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999930626767822,
+        "dist_mmd2": 0.03638746121735248,
+        "dist_mean_l2": 0.5973546651773209
+      },
+      {
+        "iter": 2.0,
+        "td_loss": 8.52901560016861e-05,
+        "critic_teacher_error": 0.022384186172899508,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482842323085462,
+        "fixed_point_gap": 0.014327664484505339,
+        "fixed_point_drift": 0.01620773040083277,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999920359481093,
+        "dist_mmd2": 0.03824615298115286,
+        "dist_mean_l2": 0.6456851713361684
+      },
+      {
+        "iter": 3.0,
+        "td_loss": 4.8101048701744974e-05,
+        "critic_teacher_error": 0.022383585237363605,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482739154088396,
+        "fixed_point_gap": 0.023983341566961965,
+        "fixed_point_drift": 0.018677129069191528,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999925451099421,
+        "dist_mmd2": 0.03282633281299596,
+        "dist_mean_l2": 0.5453108188742317
+      },
+      {
+        "iter": 4.0,
+        "td_loss": 0.00017556309856472368,
+        "critic_teacher_error": 0.02238142231481026,
+        "tracking_gap": 0.0,
+        "mean_rho2": 1.0,
+        "w_norm": 1.5482531723208302,
+        "fixed_point_gap": 0.025008419192704683,
+        "fixed_point_drift": 0.015239748699403508,
+        "fixed_point_drift_defined": 1.0,
+        "stability_proxy": 0.9999934827737278,
+        "dist_mmd2": 0.020349567022197035,
+        "dist_mean_l2": 0.346025674224485
+      }
+    ]
+  },
+  "health_summary": {
+    "status": "PASS",
+    "reasons": [
+      "all checks passed"
+    ]
+  },
+  "recommendations": [
+    "no major rule-based issues detected; consider longer runs or new probes if results are inconclusive."
+  ],
+  "incomplete": false,
+  "exception": null
+}

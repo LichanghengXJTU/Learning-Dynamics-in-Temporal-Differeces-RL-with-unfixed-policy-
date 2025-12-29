@@ -1,0 +1,2 @@
+iter,w_gap,w_sharp_drift,w_sharp_drift_defined,converged,num_iters,batch_size,tol
+49,0.11862334020446176,0.0,0.0,False,2000,4096,1e-07

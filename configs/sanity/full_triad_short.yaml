@@ -1,0 +1,2 @@
+# Sanity check: full triad (short run) for end-to-end integration.
+outer_iters: 8

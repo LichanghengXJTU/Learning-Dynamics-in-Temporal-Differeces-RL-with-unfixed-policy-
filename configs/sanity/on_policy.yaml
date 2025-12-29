@@ -1,0 +1,2 @@
+# Sanity check: on-policy (mu=pi), expects rho ~ 1 and dist_mmd2 ~ 0.
+beta: 1.0

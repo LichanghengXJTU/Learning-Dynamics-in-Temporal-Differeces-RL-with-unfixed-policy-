@@ -1,0 +1,463 @@
+{
+  "repo": {
+    "commit": "a84b364b797739f6a6669e4a8308245a452d798f",
+    "python": "3.14.2",
+    "os": "macOS-15.3-arm64-arm-64bit-Mach-O",
+    "numpy": "not_installed: ModuleNotFoundError",
+    "torch": "not_installed: ModuleNotFoundError"
+  },
+  "sanity_checks": [
+    {
+      "id": "SC1",
+      "name": "on_policy (scripts/run_sanity_suite.py::_run_check)",
+      "entrypoints": [
+        "scripts/run_sanity_suite.py:_run_check",
+        "tdrl_unfixed_ac/algos/train_unfixed_ac.py:train_unfixed_ac",
+        "tdrl_unfixed_ac/reporting/run_report.py:generate_run_report"
+      ],
+      "how_to_run": [
+        "python3 tools/run_sanity_suite.py --base configs/train_sanity.yaml --out_root outputs/sanity_suite"
+      ],
+      "pass_criteria": "no_nan_inf pass; monotone_time pass; rho_sane pass; on_policy_expected: |mean_rho2-1|<=0.1 and dist_mmd2<=1e-3.",
+      "outputs": [
+        "outputs/sanity_suite/20251227_162149/on_policy/learning_curves.csv",
+        "outputs/sanity_suite/20251227_162149/on_policy/probes/fixed_point_probe.csv",
+        "outputs/sanity_suite/20251227_162149/on_policy/probes/stability_probe.csv",
+        "outputs/sanity_suite/20251227_162149/on_policy/probes/distribution_probe.csv",
+        "outputs/sanity_suite/20251227_162149/on_policy/run_report.json",
+        "outputs/sanity_suite/20251227_162149/on_policy/run_report.md",
+        "outputs/sanity_suite/20251227_162149/on_policy/stdout.log",
+        "outputs/sanity_suite/20251227_162149/on_policy/config_resolved.yaml"
+      ],
+      "dependencies": [
+        "tdrl_unfixed_ac.envs.torus_gg.TorusGobletGhostEnv",
+        "tdrl_unfixed_ac.algos.train_unfixed_ac.train_unfixed_ac",
+        "tdrl_unfixed_ac.probes.manager.ProbeManager",
+        "tdrl_unfixed_ac.reporting.run_report.generate_run_report"
+      ],
+      "failure": {
+        "status": "fail",
+        "type": "metric",
+        "traceback_excerpt": "None (exception field is null; run completed, failure is metric-based).",
+        "log_excerpt": "== Sanity check: on_policy ==\nBase config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/train_sanity.yaml\nTemplate config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/sanity/on_policy.yaml\nKey hyperparameters:\n  seed: 0\n  outer_iters: 5\n  trajectories: 2\n  horizon: 50\n  gamma: 0.95\n  alpha_w: 0.1\n  alpha_pi: 0.05\n  beta: 1.0\n  sigma_mu: 0.2\n  sigma_pi: 0.2\n  K_mc: 2\n  theta_radius: 5.0\n  checkpoint_every: 1\n  log_every: 1\nenv_config_path: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml\nenv overrides: {'feature_dim': 256, 'actor_feature_dim': 64, 'p_mix': 0.1}\nprobes.enabled: True\nprobes.every: 1\nExpected: rho ~= 1 (mu=pi, sigma_mu=sigma_pi).\niter 000 | td_loss 0.0000 | teacher_err 0.0224 | gap 0.0000 | rho2 1.0000 | w_norm 1.548\niter 001 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.0000 | w_norm 1.548\niter 002 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.0000 | w_norm 1.548\niter 003 | td_loss 0.0000 | teacher_err 0.0224 | gap 0.0000 | rho2 1.0000 | w_norm 1.548\niter 004 | td_loss 0.0002 | teacher_err 0.0224 | gap 0.0000 | rho2 1.0000 | w_norm 1.548\nTraining complete. Logs at /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/on_policy/learning_curves.csv",
+        "key_metrics": {
+          "td_loss_last": 0.00017556309856472368,
+          "w_norm_last": 1.5482531723208302,
+          "mean_rho2_last": 1.0,
+          "tracking_gap_last": 0.0,
+          "critic_teacher_error_last": 0.02238142231481026,
+          "stability_proxy_last": 0.9999934827737278,
+          "fixed_point_drift_last": 0.015239748699403508,
+          "fixed_point_gap_last": 0.025008419192704683,
+          "dist_mmd2_last": 0.020349567022197146,
+          "dist_mean_l2_last": 0.346025674224485,
+          "health_summary": {
+            "status": "FAIL",
+            "reasons": [
+              "no_nan_inf: found NaN/Inf in numeric columns",
+              "on_policy_expected: on-policy expectations not met"
+            ]
+          },
+          "health_checks.no_nan_inf": {
+            "pass": false,
+            "reason": "found NaN/Inf in numeric columns",
+            "observed": {
+              "nan_count": 1,
+              "inf_count": 0,
+              "nan_cols": [
+                "fixed_point_drift"
+              ],
+              "inf_cols": []
+            },
+            "applicable": true
+          },
+          "health_checks.on_policy_expected": {
+            "pass": false,
+            "reason": "on-policy expectations not met",
+            "observed": {
+              "mean_rho2": 1.0,
+              "dist_mmd2": 0.020349567022197146
+            },
+            "applicable": true
+          }
+        }
+      },
+      "key_code_excerpts": [
+        {
+          "file": "scripts/run_sanity_suite.py",
+          "lines": "L147-L176",
+          "snippet": " 147\t        print(\"Expected: rho ~= 1 (mu=pi, sigma_mu=sigma_pi).\")\n 148\t    if name == \"no_bootstrap\":\n 149\t        print(\"Expected: gamma=0 (bootstrap disabled).\")\n 150\t    if name == \"fixed_pi\":\n 151\t        print(\"Expected: alpha_pi=0 (actor update disabled).\")\n 152\t\n 153\t\n 154\tdef _apply_required_overrides(name: str, cfg: Dict[str, Any]) -> None:\n 155\t    if name == \"on_policy\":\n 156\t        cfg[\"beta\"] = 1.0\n 157\t        sigma_pi = float(cfg.get(\"sigma_pi\", 1.0))\n 158\t        cfg[\"sigma_mu\"] = sigma_pi\n 159\t    elif name == \"no_bootstrap\":\n 160\t        cfg[\"gamma\"] = 0.0\n 161\t    elif name == \"fixed_pi\":\n 162\t        cfg[\"alpha_pi\"] = 0.0\n 163\t\n 164\t\n 165\tdef _resolve_run_config(base_path: Path, template_path: Path, run_dir: Path, name: str) -> Dict[str, Any]:\n 166\t    cfg = load_train_config(str(base_path))\n 167\t    if template_path.exists():\n 168\t        overrides = _load_payload(template_path)\n 169\t        if overrides:\n 170\t            _deep_update(cfg, overrides)\n 171\t    _apply_required_overrides(name, cfg)\n 172\t    cfg[\"check_name\"] = name\n 173\t    cfg[\"output_dir\"] = str(run_dir)\n 174\t    env_path = cfg.get(\"env_config_path\")\n 175\t    if env_path:\n 176\t        cfg[\"env_config_path\"] = _resolve_relative(str(env_path), base_path.parent)",
+          "why_relevant": "Shows per-check expectations + required overrides + check_name assignment."
+        },
+        {
+          "file": "tdrl_unfixed_ac/probes/manager.py",
+          "lines": "L124-L154",
+          "snippet": " 124\t                sigma_pi=self.sigma_pi,\n 125\t                alpha_w=float(fixed_cfg[\"alpha_w\"]),\n 126\t                gamma=float(fixed_cfg[\"gamma\"]),\n 127\t                k_mc=int(fixed_cfg[\"k_mc\"]),\n 128\t                batch_size=int(fixed_cfg[\"batch_size\"]),\n 129\t                max_iters=int(fixed_cfg[\"max_iters\"]),\n 130\t                tol=float(fixed_cfg[\"tol\"]),\n 131\t                seed=self._seed_for(iteration, 1),\n 132\t            )\n 133\t            w_sharp = fixed_out[\"w_sharp\"]\n 134\t            gap = float(np.linalg.norm(w - w_sharp))\n 135\t            drift = (\n 136\t                float(np.linalg.norm(w_sharp - self._prev_w_sharp))\n 137\t                if self._prev_w_sharp is not None\n 138\t                else float(\"nan\")\n 139\t            )\n 140\t            self._prev_w_sharp = np.array(w_sharp, copy=True)\n 141\t            results[\"fixed_point_gap\"] = gap\n 142\t            results[\"fixed_point_drift\"] = drift\n 143\t            self._append_probe(\n 144\t                \"fixed_point_probe\",\n 145\t                {\n 146\t                    \"iter\": iteration,\n 147\t                    \"w_gap\": gap,\n 148\t                    \"w_sharp_drift\": drift,\n 149\t                    \"converged\": fixed_out[\"converged\"],\n 150\t                    \"num_iters\": fixed_out[\"num_iters\"],\n 151\t                    \"batch_size\": fixed_out[\"batch_size\"],\n 152\t                    \"tol\": fixed_out[\"tol\"],\n 153\t                },\n 154\t            )",
+          "why_relevant": "Sets fixed_point_drift to NaN on first probe; drives no_nan_inf failure."
+        },
+        {
+          "file": "tdrl_unfixed_ac/reporting/run_report.py",
+          "lines": "L248-L277",
+          "snippet": " 248\t    # no_nan_inf\n 249\t    if not rows:\n 250\t        checks[\"no_nan_inf\"] = {\n 251\t            \"pass\": False,\n 252\t            \"reason\": \"learning_curves.csv missing or empty\",\n 253\t            \"observed\": {\"nan_count\": None, \"inf_count\": None},\n 254\t            \"applicable\": True,\n 255\t        }\n 256\t    else:\n 257\t        nan_cols: List[str] = []\n 258\t        inf_cols: List[str] = []\n 259\t        nan_count = 0\n 260\t        inf_count = 0\n 261\t        for col in numeric_cols:\n 262\t            for row in rows:\n 263\t                value = row.get(col)\n 264\t                if isinstance(value, float) and math.isnan(value):\n 265\t                    nan_count += 1\n 266\t                    if col not in nan_cols:\n 267\t                        nan_cols.append(col)\n 268\t                if isinstance(value, float) and math.isinf(value):\n 269\t                    inf_count += 1\n 270\t                    if col not in inf_cols:\n 271\t                        inf_cols.append(col)\n 272\t        passed = nan_count == 0 and inf_count == 0\n 273\t        reason = \"all numeric columns finite\" if passed else \"found NaN/Inf in numeric columns\"\n 274\t        checks[\"no_nan_inf\"] = {\n 275\t            \"pass\": passed,\n 276\t            \"reason\": reason,\n 277\t            \"observed\": {\"nan_count\": nan_count, \"inf_count\": inf_count, \"nan_cols\": nan_cols, \"inf_cols\": inf_cols},",
+          "why_relevant": "Fails run if any numeric column has NaN/Inf."
+        },
+        {
+          "file": "tdrl_unfixed_ac/reporting/run_report.py",
+          "lines": "L339-L368",
+          "snippet": " 339\t    else:\n 340\t        values = _iter_finite([row.get(rho_col) for row in rows])\n 341\t        max_val = max(values) if values else None\n 342\t        passed = max_val is not None and max_val <= rho_threshold\n 343\t        reason = \"rho within threshold\" if passed else \"rho exceeds threshold\"\n 344\t        checks[\"rho_sane\"] = {\n 345\t            \"pass\": passed,\n 346\t            \"reason\": reason,\n 347\t            \"observed\": {\"rho_column\": rho_col, \"max\": max_val, \"threshold\": rho_threshold},\n 348\t            \"applicable\": True,\n 349\t        }\n 350\t\n 351\t    # on_policy_expected\n 352\t    check_name = cfg.get(\"check_name\")\n 353\t    applicable = check_name == \"on_policy\"\n 354\t    mean_rho2 = None\n 355\t    if \"mean_rho2\" in numeric_cols:\n 356\t        mean_rho2 = _last_finite([row.get(\"mean_rho2\") for row in rows])\n 357\t    rho_ok = mean_rho2 is not None and abs(mean_rho2 - 1.0) <= 0.1\n 358\t    mmd_ok = dist_mmd2_value is not None and dist_mmd2_value <= 1e-3\n 359\t    if applicable:\n 360\t        passed = rho_ok and mmd_ok if dist_mmd2_value is not None else rho_ok\n 361\t        if dist_mmd2_value is None:\n 362\t            reason = \"mean_rho2 close to 1; dist_mmd2 unavailable\"\n 363\t        else:\n 364\t            reason = \"mean_rho2 close to 1 and dist_mmd2 close to 0\" if passed else \"on-policy expectations not met\"\n 365\t        checks[\"on_policy_expected\"] = {\n 366\t            \"pass\": passed,\n 367\t            \"reason\": reason,\n 368\t            \"observed\": {\"mean_rho2\": mean_rho2, \"dist_mmd2\": dist_mmd2_value},",
+          "why_relevant": "Defines on_policy_expected threshold for mean_rho2 and dist_mmd2."
+        }
+      ],
+      "report_sources": [
+        {
+          "path": "outputs/sanity_suite/20251227_162149/on_policy/run_report.json",
+          "fields_used": [
+            "health_summary.status",
+            "health_summary.reasons",
+            "health_checks.no_nan_inf",
+            "health_checks.on_policy_expected",
+            "summary_metrics.learning_curves.*.last",
+            "summary_metrics.probes.*.last"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SC2",
+      "name": "no_bootstrap (scripts/run_sanity_suite.py::_run_check)",
+      "entrypoints": [
+        "scripts/run_sanity_suite.py:_run_check",
+        "tdrl_unfixed_ac/algos/train_unfixed_ac.py:train_unfixed_ac",
+        "tdrl_unfixed_ac/reporting/run_report.py:generate_run_report"
+      ],
+      "how_to_run": [
+        "python3 tools/run_sanity_suite.py --base configs/train_sanity.yaml --out_root outputs/sanity_suite"
+      ],
+      "pass_criteria": "no_nan_inf pass; monotone_time pass; rho_sane pass; no_bootstrap_expected: gamma==0.",
+      "outputs": [
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/learning_curves.csv",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/probes/fixed_point_probe.csv",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/probes/stability_probe.csv",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/probes/distribution_probe.csv",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/run_report.json",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/run_report.md",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/stdout.log",
+        "outputs/sanity_suite/20251227_162149/no_bootstrap/config_resolved.yaml"
+      ],
+      "dependencies": [
+        "tdrl_unfixed_ac.envs.torus_gg.TorusGobletGhostEnv",
+        "tdrl_unfixed_ac.algos.train_unfixed_ac.train_unfixed_ac",
+        "tdrl_unfixed_ac.probes.manager.ProbeManager",
+        "tdrl_unfixed_ac.reporting.run_report.generate_run_report"
+      ],
+      "failure": {
+        "status": "fail",
+        "type": "metric",
+        "traceback_excerpt": "None (exception field is null; run completed, failure is metric-based).",
+        "log_excerpt": "== Sanity check: no_bootstrap ==\nBase config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/train_sanity.yaml\nTemplate config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/sanity/no_bootstrap.yaml\nKey hyperparameters:\n  seed: 0\n  outer_iters: 5\n  trajectories: 2\n  horizon: 50\n  gamma: 0.0\n  alpha_w: 0.1\n  alpha_pi: 0.05\n  beta: 0.2\n  sigma_mu: 0.3\n  sigma_pi: 0.2\n  K_mc: 2\n  theta_radius: 5.0\n  checkpoint_every: 1\n  log_every: 1\nenv_config_path: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml\nenv overrides: {'feature_dim': 256, 'actor_feature_dim': 64, 'p_mix': 0.1}\nprobes.enabled: True\nprobes.every: 1\nExpected: gamma=0 (bootstrap disabled).\niter 000 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.7800 | w_norm 1.548\niter 001 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.4295 | w_norm 1.548\niter 002 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.7604 | w_norm 1.548\niter 003 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.5848 | w_norm 1.548\niter 004 | td_loss 0.0002 | teacher_err 0.0224 | gap 0.0000 | rho2 1.4800 | w_norm 1.548\nTraining complete. Logs at /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/no_bootstrap/learning_curves.csv",
+        "key_metrics": {
+          "td_loss_last": 0.00016474806376779515,
+          "w_norm_last": 1.5481190955806512,
+          "mean_rho2_last": 1.4800007583294021,
+          "tracking_gap_last": 8.49851299569964e-11,
+          "critic_teacher_error_last": 0.02237930953111923,
+          "stability_proxy_last": 0.9999720584644873,
+          "fixed_point_drift_last": 0.02955709482694678,
+          "fixed_point_gap_last": 0.032348436892866615,
+          "dist_mmd2_last": 0.018054714257991655,
+          "dist_mean_l2_last": 0.32049132267537256,
+          "health_summary": {
+            "status": "FAIL",
+            "reasons": [
+              "no_nan_inf: found NaN/Inf in numeric columns"
+            ]
+          },
+          "health_checks.no_nan_inf": {
+            "pass": false,
+            "reason": "found NaN/Inf in numeric columns",
+            "observed": {
+              "nan_count": 1,
+              "inf_count": 0,
+              "nan_cols": [
+                "fixed_point_drift"
+              ],
+              "inf_cols": []
+            },
+            "applicable": true
+          },
+          "health_checks.on_policy_expected": {
+            "pass": true,
+            "reason": "not applicable",
+            "observed": {
+              "mean_rho2": 1.4800007583294021,
+              "dist_mmd2": 0.018054714257991655
+            },
+            "applicable": false
+          }
+        }
+      },
+      "key_code_excerpts": [
+        {
+          "file": "scripts/run_sanity_suite.py",
+          "lines": "L147-L176",
+          "snippet": " 147\t        print(\"Expected: rho ~= 1 (mu=pi, sigma_mu=sigma_pi).\")\n 148\t    if name == \"no_bootstrap\":\n 149\t        print(\"Expected: gamma=0 (bootstrap disabled).\")\n 150\t    if name == \"fixed_pi\":\n 151\t        print(\"Expected: alpha_pi=0 (actor update disabled).\")\n 152\t\n 153\t\n 154\tdef _apply_required_overrides(name: str, cfg: Dict[str, Any]) -> None:\n 155\t    if name == \"on_policy\":\n 156\t        cfg[\"beta\"] = 1.0\n 157\t        sigma_pi = float(cfg.get(\"sigma_pi\", 1.0))\n 158\t        cfg[\"sigma_mu\"] = sigma_pi\n 159\t    elif name == \"no_bootstrap\":\n 160\t        cfg[\"gamma\"] = 0.0\n 161\t    elif name == \"fixed_pi\":\n 162\t        cfg[\"alpha_pi\"] = 0.0\n 163\t\n 164\t\n 165\tdef _resolve_run_config(base_path: Path, template_path: Path, run_dir: Path, name: str) -> Dict[str, Any]:\n 166\t    cfg = load_train_config(str(base_path))\n 167\t    if template_path.exists():\n 168\t        overrides = _load_payload(template_path)\n 169\t        if overrides:\n 170\t            _deep_update(cfg, overrides)\n 171\t    _apply_required_overrides(name, cfg)\n 172\t    cfg[\"check_name\"] = name\n 173\t    cfg[\"output_dir\"] = str(run_dir)\n 174\t    env_path = cfg.get(\"env_config_path\")\n 175\t    if env_path:\n 176\t        cfg[\"env_config_path\"] = _resolve_relative(str(env_path), base_path.parent)",
+          "why_relevant": "Shows per-check expectations + required overrides + check_name assignment."
+        },
+        {
+          "file": "tdrl_unfixed_ac/probes/manager.py",
+          "lines": "L124-L154",
+          "snippet": " 124\t                sigma_pi=self.sigma_pi,\n 125\t                alpha_w=float(fixed_cfg[\"alpha_w\"]),\n 126\t                gamma=float(fixed_cfg[\"gamma\"]),\n 127\t                k_mc=int(fixed_cfg[\"k_mc\"]),\n 128\t                batch_size=int(fixed_cfg[\"batch_size\"]),\n 129\t                max_iters=int(fixed_cfg[\"max_iters\"]),\n 130\t                tol=float(fixed_cfg[\"tol\"]),\n 131\t                seed=self._seed_for(iteration, 1),\n 132\t            )\n 133\t            w_sharp = fixed_out[\"w_sharp\"]\n 134\t            gap = float(np.linalg.norm(w - w_sharp))\n 135\t            drift = (\n 136\t                float(np.linalg.norm(w_sharp - self._prev_w_sharp))\n 137\t                if self._prev_w_sharp is not None\n 138\t                else float(\"nan\")\n 139\t            )\n 140\t            self._prev_w_sharp = np.array(w_sharp, copy=True)\n 141\t            results[\"fixed_point_gap\"] = gap\n 142\t            results[\"fixed_point_drift\"] = drift\n 143\t            self._append_probe(\n 144\t                \"fixed_point_probe\",\n 145\t                {\n 146\t                    \"iter\": iteration,\n 147\t                    \"w_gap\": gap,\n 148\t                    \"w_sharp_drift\": drift,\n 149\t                    \"converged\": fixed_out[\"converged\"],\n 150\t                    \"num_iters\": fixed_out[\"num_iters\"],\n 151\t                    \"batch_size\": fixed_out[\"batch_size\"],\n 152\t                    \"tol\": fixed_out[\"tol\"],\n 153\t                },\n 154\t            )",
+          "why_relevant": "Sets fixed_point_drift to NaN on first probe; drives no_nan_inf failure."
+        },
+        {
+          "file": "tdrl_unfixed_ac/reporting/run_report.py",
+          "lines": "L248-L277",
+          "snippet": " 248\t    # no_nan_inf\n 249\t    if not rows:\n 250\t        checks[\"no_nan_inf\"] = {\n 251\t            \"pass\": False,\n 252\t            \"reason\": \"learning_curves.csv missing or empty\",\n 253\t            \"observed\": {\"nan_count\": None, \"inf_count\": None},\n 254\t            \"applicable\": True,\n 255\t        }\n 256\t    else:\n 257\t        nan_cols: List[str] = []\n 258\t        inf_cols: List[str] = []\n 259\t        nan_count = 0\n 260\t        inf_count = 0\n 261\t        for col in numeric_cols:\n 262\t            for row in rows:\n 263\t                value = row.get(col)\n 264\t                if isinstance(value, float) and math.isnan(value):\n 265\t                    nan_count += 1\n 266\t                    if col not in nan_cols:\n 267\t                        nan_cols.append(col)\n 268\t                if isinstance(value, float) and math.isinf(value):\n 269\t                    inf_count += 1\n 270\t                    if col not in inf_cols:\n 271\t                        inf_cols.append(col)\n 272\t        passed = nan_count == 0 and inf_count == 0\n 273\t        reason = \"all numeric columns finite\" if passed else \"found NaN/Inf in numeric columns\"\n 274\t        checks[\"no_nan_inf\"] = {\n 275\t            \"pass\": passed,\n 276\t            \"reason\": reason,\n 277\t            \"observed\": {\"nan_count\": nan_count, \"inf_count\": inf_count, \"nan_cols\": nan_cols, \"inf_cols\": inf_cols},",
+          "why_relevant": "Fails run if any numeric column has NaN/Inf."
+        }
+      ],
+      "report_sources": [
+        {
+          "path": "outputs/sanity_suite/20251227_162149/no_bootstrap/run_report.json",
+          "fields_used": [
+            "health_summary.status",
+            "health_summary.reasons",
+            "health_checks.no_nan_inf",
+            "health_checks.on_policy_expected",
+            "summary_metrics.learning_curves.*.last",
+            "summary_metrics.probes.*.last"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SC3",
+      "name": "fixed_pi (scripts/run_sanity_suite.py::_run_check)",
+      "entrypoints": [
+        "scripts/run_sanity_suite.py:_run_check",
+        "tdrl_unfixed_ac/algos/train_unfixed_ac.py:train_unfixed_ac",
+        "tdrl_unfixed_ac/reporting/run_report.py:generate_run_report"
+      ],
+      "how_to_run": [
+        "python3 tools/run_sanity_suite.py --base configs/train_sanity.yaml --out_root outputs/sanity_suite"
+      ],
+      "pass_criteria": "no_nan_inf pass; monotone_time pass; rho_sane pass; fixed_pi_expected: alpha_pi==0.",
+      "outputs": [
+        "outputs/sanity_suite/20251227_162149/fixed_pi/learning_curves.csv",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/probes/fixed_point_probe.csv",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/probes/stability_probe.csv",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/probes/distribution_probe.csv",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/run_report.json",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/run_report.md",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/stdout.log",
+        "outputs/sanity_suite/20251227_162149/fixed_pi/config_resolved.yaml"
+      ],
+      "dependencies": [
+        "tdrl_unfixed_ac.envs.torus_gg.TorusGobletGhostEnv",
+        "tdrl_unfixed_ac.algos.train_unfixed_ac.train_unfixed_ac",
+        "tdrl_unfixed_ac.probes.manager.ProbeManager",
+        "tdrl_unfixed_ac.reporting.run_report.generate_run_report"
+      ],
+      "failure": {
+        "status": "fail",
+        "type": "metric",
+        "traceback_excerpt": "None (exception field is null; run completed, failure is metric-based).",
+        "log_excerpt": "== Sanity check: fixed_pi ==\nBase config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/train_sanity.yaml\nTemplate config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/sanity/fixed_pi.yaml\nKey hyperparameters:\n  seed: 0\n  outer_iters: 5\n  trajectories: 2\n  horizon: 50\n  gamma: 0.95\n  alpha_w: 0.1\n  alpha_pi: 0.0\n  beta: 0.2\n  sigma_mu: 0.3\n  sigma_pi: 0.2\n  K_mc: 2\n  theta_radius: 5.0\n  checkpoint_every: 1\n  log_every: 1\nenv_config_path: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml\nenv overrides: {'feature_dim': 256, 'actor_feature_dim': 64, 'p_mix': 0.1}\nprobes.enabled: True\nprobes.every: 1\nExpected: alpha_pi=0 (actor update disabled).\niter 000 | td_loss 0.0000 | teacher_err 0.0224 | gap 0.0000 | rho2 1.7800 | w_norm 1.548\niter 001 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.4295 | w_norm 1.548\niter 002 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.7604 | w_norm 1.548\niter 003 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.5848 | w_norm 1.548\niter 004 | td_loss 0.0002 | teacher_err 0.0224 | gap 0.0000 | rho2 1.4800 | w_norm 1.548\nTraining complete. Logs at /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/fixed_pi/learning_curves.csv",
+        "key_metrics": {
+          "td_loss_last": 0.00015153027026911734,
+          "w_norm_last": 1.5482396714326339,
+          "mean_rho2_last": 1.480000678331054,
+          "tracking_gap_last": 2.058643256595072e-34,
+          "critic_teacher_error_last": 0.022380879533493984,
+          "stability_proxy_last": 0.9999917340584825,
+          "fixed_point_drift_last": 0.017212841740933394,
+          "fixed_point_gap_last": 0.021609671234043917,
+          "dist_mmd2_last": 0.018054739395543806,
+          "dist_mean_l2_last": 0.3204931453720982,
+          "health_summary": {
+            "status": "FAIL",
+            "reasons": [
+              "no_nan_inf: found NaN/Inf in numeric columns"
+            ]
+          },
+          "health_checks.no_nan_inf": {
+            "pass": false,
+            "reason": "found NaN/Inf in numeric columns",
+            "observed": {
+              "nan_count": 1,
+              "inf_count": 0,
+              "nan_cols": [
+                "fixed_point_drift"
+              ],
+              "inf_cols": []
+            },
+            "applicable": true
+          },
+          "health_checks.on_policy_expected": {
+            "pass": true,
+            "reason": "not applicable",
+            "observed": {
+              "mean_rho2": 1.480000678331054,
+              "dist_mmd2": 0.018054739395543806
+            },
+            "applicable": false
+          }
+        }
+      },
+      "key_code_excerpts": [
+        {
+          "file": "scripts/run_sanity_suite.py",
+          "lines": "L147-L176",
+          "snippet": " 147\t        print(\"Expected: rho ~= 1 (mu=pi, sigma_mu=sigma_pi).\")\n 148\t    if name == \"no_bootstrap\":\n 149\t        print(\"Expected: gamma=0 (bootstrap disabled).\")\n 150\t    if name == \"fixed_pi\":\n 151\t        print(\"Expected: alpha_pi=0 (actor update disabled).\")\n 152\t\n 153\t\n 154\tdef _apply_required_overrides(name: str, cfg: Dict[str, Any]) -> None:\n 155\t    if name == \"on_policy\":\n 156\t        cfg[\"beta\"] = 1.0\n 157\t        sigma_pi = float(cfg.get(\"sigma_pi\", 1.0))\n 158\t        cfg[\"sigma_mu\"] = sigma_pi\n 159\t    elif name == \"no_bootstrap\":\n 160\t        cfg[\"gamma\"] = 0.0\n 161\t    elif name == \"fixed_pi\":\n 162\t        cfg[\"alpha_pi\"] = 0.0\n 163\t\n 164\t\n 165\tdef _resolve_run_config(base_path: Path, template_path: Path, run_dir: Path, name: str) -> Dict[str, Any]:\n 166\t    cfg = load_train_config(str(base_path))\n 167\t    if template_path.exists():\n 168\t        overrides = _load_payload(template_path)\n 169\t        if overrides:\n 170\t            _deep_update(cfg, overrides)\n 171\t    _apply_required_overrides(name, cfg)\n 172\t    cfg[\"check_name\"] = name\n 173\t    cfg[\"output_dir\"] = str(run_dir)\n 174\t    env_path = cfg.get(\"env_config_path\")\n 175\t    if env_path:\n 176\t        cfg[\"env_config_path\"] = _resolve_relative(str(env_path), base_path.parent)",
+          "why_relevant": "Shows per-check expectations + required overrides + check_name assignment."
+        },
+        {
+          "file": "tdrl_unfixed_ac/probes/manager.py",
+          "lines": "L124-L154",
+          "snippet": " 124\t                sigma_pi=self.sigma_pi,\n 125\t                alpha_w=float(fixed_cfg[\"alpha_w\"]),\n 126\t                gamma=float(fixed_cfg[\"gamma\"]),\n 127\t                k_mc=int(fixed_cfg[\"k_mc\"]),\n 128\t                batch_size=int(fixed_cfg[\"batch_size\"]),\n 129\t                max_iters=int(fixed_cfg[\"max_iters\"]),\n 130\t                tol=float(fixed_cfg[\"tol\"]),\n 131\t                seed=self._seed_for(iteration, 1),\n 132\t            )\n 133\t            w_sharp = fixed_out[\"w_sharp\"]\n 134\t            gap = float(np.linalg.norm(w - w_sharp))\n 135\t            drift = (\n 136\t                float(np.linalg.norm(w_sharp - self._prev_w_sharp))\n 137\t                if self._prev_w_sharp is not None\n 138\t                else float(\"nan\")\n 139\t            )\n 140\t            self._prev_w_sharp = np.array(w_sharp, copy=True)\n 141\t            results[\"fixed_point_gap\"] = gap\n 142\t            results[\"fixed_point_drift\"] = drift\n 143\t            self._append_probe(\n 144\t                \"fixed_point_probe\",\n 145\t                {\n 146\t                    \"iter\": iteration,\n 147\t                    \"w_gap\": gap,\n 148\t                    \"w_sharp_drift\": drift,\n 149\t                    \"converged\": fixed_out[\"converged\"],\n 150\t                    \"num_iters\": fixed_out[\"num_iters\"],\n 151\t                    \"batch_size\": fixed_out[\"batch_size\"],\n 152\t                    \"tol\": fixed_out[\"tol\"],\n 153\t                },\n 154\t            )",
+          "why_relevant": "Sets fixed_point_drift to NaN on first probe; drives no_nan_inf failure."
+        },
+        {
+          "file": "tdrl_unfixed_ac/reporting/run_report.py",
+          "lines": "L248-L277",
+          "snippet": " 248\t    # no_nan_inf\n 249\t    if not rows:\n 250\t        checks[\"no_nan_inf\"] = {\n 251\t            \"pass\": False,\n 252\t            \"reason\": \"learning_curves.csv missing or empty\",\n 253\t            \"observed\": {\"nan_count\": None, \"inf_count\": None},\n 254\t            \"applicable\": True,\n 255\t        }\n 256\t    else:\n 257\t        nan_cols: List[str] = []\n 258\t        inf_cols: List[str] = []\n 259\t        nan_count = 0\n 260\t        inf_count = 0\n 261\t        for col in numeric_cols:\n 262\t            for row in rows:\n 263\t                value = row.get(col)\n 264\t                if isinstance(value, float) and math.isnan(value):\n 265\t                    nan_count += 1\n 266\t                    if col not in nan_cols:\n 267\t                        nan_cols.append(col)\n 268\t                if isinstance(value, float) and math.isinf(value):\n 269\t                    inf_count += 1\n 270\t                    if col not in inf_cols:\n 271\t                        inf_cols.append(col)\n 272\t        passed = nan_count == 0 and inf_count == 0\n 273\t        reason = \"all numeric columns finite\" if passed else \"found NaN/Inf in numeric columns\"\n 274\t        checks[\"no_nan_inf\"] = {\n 275\t            \"pass\": passed,\n 276\t            \"reason\": reason,\n 277\t            \"observed\": {\"nan_count\": nan_count, \"inf_count\": inf_count, \"nan_cols\": nan_cols, \"inf_cols\": inf_cols},",
+          "why_relevant": "Fails run if any numeric column has NaN/Inf."
+        }
+      ],
+      "report_sources": [
+        {
+          "path": "outputs/sanity_suite/20251227_162149/fixed_pi/run_report.json",
+          "fields_used": [
+            "health_summary.status",
+            "health_summary.reasons",
+            "health_checks.no_nan_inf",
+            "health_checks.on_policy_expected",
+            "summary_metrics.learning_curves.*.last",
+            "summary_metrics.probes.*.last"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SC4",
+      "name": "full_triad_short (scripts/run_sanity_suite.py::_run_check)",
+      "entrypoints": [
+        "scripts/run_sanity_suite.py:_run_check",
+        "tdrl_unfixed_ac/algos/train_unfixed_ac.py:train_unfixed_ac",
+        "tdrl_unfixed_ac/reporting/run_report.py:generate_run_report"
+      ],
+      "how_to_run": [
+        "python3 tools/run_sanity_suite.py --base configs/train_sanity.yaml --out_root outputs/sanity_suite"
+      ],
+      "pass_criteria": "no_nan_inf pass; monotone_time pass; rho_sane pass (no extra check_name constraints).",
+      "outputs": [
+        "outputs/sanity_suite/20251227_162149/full_triad_short/learning_curves.csv",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/probes/fixed_point_probe.csv",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/probes/stability_probe.csv",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/probes/distribution_probe.csv",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/run_report.json",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/run_report.md",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/stdout.log",
+        "outputs/sanity_suite/20251227_162149/full_triad_short/config_resolved.yaml"
+      ],
+      "dependencies": [
+        "tdrl_unfixed_ac.envs.torus_gg.TorusGobletGhostEnv",
+        "tdrl_unfixed_ac.algos.train_unfixed_ac.train_unfixed_ac",
+        "tdrl_unfixed_ac.probes.manager.ProbeManager",
+        "tdrl_unfixed_ac.reporting.run_report.generate_run_report"
+      ],
+      "failure": {
+        "status": "fail",
+        "type": "metric",
+        "traceback_excerpt": "None (exception field is null; run completed, failure is metric-based).",
+        "log_excerpt": "== Sanity check: full_triad_short ==\nBase config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/train_sanity.yaml\nTemplate config: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/sanity/full_triad_short.yaml\nKey hyperparameters:\n  seed: 0\n  outer_iters: 8\n  trajectories: 2\n  horizon: 50\n  gamma: 0.95\n  alpha_w: 0.1\n  alpha_pi: 0.05\n  beta: 0.2\n  sigma_mu: 0.3\n  sigma_pi: 0.2\n  K_mc: 2\n  theta_radius: 5.0\n  checkpoint_every: 1\n  log_every: 1\nenv_config_path: /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml\nenv overrides: {'feature_dim': 256, 'actor_feature_dim': 64, 'p_mix': 0.1}\nprobes.enabled: True\nprobes.every: 1\niter 000 | td_loss 0.0000 | teacher_err 0.0224 | gap 0.0000 | rho2 1.7800 | w_norm 1.548\niter 001 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.4295 | w_norm 1.548\niter 002 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.7604 | w_norm 1.548\niter 003 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.5848 | w_norm 1.548\niter 004 | td_loss 0.0002 | teacher_err 0.0224 | gap 0.0000 | rho2 1.4800 | w_norm 1.548\niter 005 | td_loss 0.0000 | teacher_err 0.0224 | gap 0.0000 | rho2 1.5374 | w_norm 1.548\niter 006 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.5813 | w_norm 1.548\niter 007 | td_loss 0.0001 | teacher_err 0.0224 | gap 0.0000 | rho2 1.6704 | w_norm 1.548",
+        "key_metrics": {
+          "td_loss_last": 8.23466270435367e-05,
+          "w_norm_last": 1.5482158794631429,
+          "mean_rho2_last": 1.6703710201030901,
+          "tracking_gap_last": 6.381568606009765e-11,
+          "critic_teacher_error_last": 0.022377953431216045,
+          "stability_proxy_last": 0.9999917568193094,
+          "fixed_point_drift_last": 0.02569435520355139,
+          "fixed_point_gap_last": 0.029224662734367277,
+          "dist_mmd2_last": 0.036157684334715445,
+          "dist_mean_l2_last": 0.636098673202821,
+          "health_summary": {
+            "status": "FAIL",
+            "reasons": [
+              "no_nan_inf: found NaN/Inf in numeric columns"
+            ]
+          },
+          "health_checks.no_nan_inf": {
+            "pass": false,
+            "reason": "found NaN/Inf in numeric columns",
+            "observed": {
+              "nan_count": 1,
+              "inf_count": 0,
+              "nan_cols": [
+                "fixed_point_drift"
+              ],
+              "inf_cols": []
+            },
+            "applicable": true
+          },
+          "health_checks.on_policy_expected": {
+            "pass": true,
+            "reason": "not applicable",
+            "observed": {
+              "mean_rho2": 1.6703710201030901,
+              "dist_mmd2": 0.036157684334715445
+            },
+            "applicable": false
+          }
+        }
+      },
+      "key_code_excerpts": [
+        {
+          "file": "scripts/run_sanity_suite.py",
+          "lines": "L147-L176",
+          "snippet": " 147\t        print(\"Expected: rho ~= 1 (mu=pi, sigma_mu=sigma_pi).\")\n 148\t    if name == \"no_bootstrap\":\n 149\t        print(\"Expected: gamma=0 (bootstrap disabled).\")\n 150\t    if name == \"fixed_pi\":\n 151\t        print(\"Expected: alpha_pi=0 (actor update disabled).\")\n 152\t\n 153\t\n 154\tdef _apply_required_overrides(name: str, cfg: Dict[str, Any]) -> None:\n 155\t    if name == \"on_policy\":\n 156\t        cfg[\"beta\"] = 1.0\n 157\t        sigma_pi = float(cfg.get(\"sigma_pi\", 1.0))\n 158\t        cfg[\"sigma_mu\"] = sigma_pi\n 159\t    elif name == \"no_bootstrap\":\n 160\t        cfg[\"gamma\"] = 0.0\n 161\t    elif name == \"fixed_pi\":\n 162\t        cfg[\"alpha_pi\"] = 0.0\n 163\t\n 164\t\n 165\tdef _resolve_run_config(base_path: Path, template_path: Path, run_dir: Path, name: str) -> Dict[str, Any]:\n 166\t    cfg = load_train_config(str(base_path))\n 167\t    if template_path.exists():\n 168\t        overrides = _load_payload(template_path)\n 169\t        if overrides:\n 170\t            _deep_update(cfg, overrides)\n 171\t    _apply_required_overrides(name, cfg)\n 172\t    cfg[\"check_name\"] = name\n 173\t    cfg[\"output_dir\"] = str(run_dir)\n 174\t    env_path = cfg.get(\"env_config_path\")\n 175\t    if env_path:\n 176\t        cfg[\"env_config_path\"] = _resolve_relative(str(env_path), base_path.parent)",
+          "why_relevant": "Shows per-check expectations + required overrides + check_name assignment."
+        },
+        {
+          "file": "tdrl_unfixed_ac/probes/manager.py",
+          "lines": "L124-L154",
+          "snippet": " 124\t                sigma_pi=self.sigma_pi,\n 125\t                alpha_w=float(fixed_cfg[\"alpha_w\"]),\n 126\t                gamma=float(fixed_cfg[\"gamma\"]),\n 127\t                k_mc=int(fixed_cfg[\"k_mc\"]),\n 128\t                batch_size=int(fixed_cfg[\"batch_size\"]),\n 129\t                max_iters=int(fixed_cfg[\"max_iters\"]),\n 130\t                tol=float(fixed_cfg[\"tol\"]),\n 131\t                seed=self._seed_for(iteration, 1),\n 132\t            )\n 133\t            w_sharp = fixed_out[\"w_sharp\"]\n 134\t            gap = float(np.linalg.norm(w - w_sharp))\n 135\t            drift = (\n 136\t                float(np.linalg.norm(w_sharp - self._prev_w_sharp))\n 137\t                if self._prev_w_sharp is not None\n 138\t                else float(\"nan\")\n 139\t            )\n 140\t            self._prev_w_sharp = np.array(w_sharp, copy=True)\n 141\t            results[\"fixed_point_gap\"] = gap\n 142\t            results[\"fixed_point_drift\"] = drift\n 143\t            self._append_probe(\n 144\t                \"fixed_point_probe\",\n 145\t                {\n 146\t                    \"iter\": iteration,\n 147\t                    \"w_gap\": gap,\n 148\t                    \"w_sharp_drift\": drift,\n 149\t                    \"converged\": fixed_out[\"converged\"],\n 150\t                    \"num_iters\": fixed_out[\"num_iters\"],\n 151\t                    \"batch_size\": fixed_out[\"batch_size\"],\n 152\t                    \"tol\": fixed_out[\"tol\"],\n 153\t                },\n 154\t            )",
+          "why_relevant": "Sets fixed_point_drift to NaN on first probe; drives no_nan_inf failure."
+        },
+        {
+          "file": "tdrl_unfixed_ac/reporting/run_report.py",
+          "lines": "L248-L277",
+          "snippet": " 248\t    # no_nan_inf\n 249\t    if not rows:\n 250\t        checks[\"no_nan_inf\"] = {\n 251\t            \"pass\": False,\n 252\t            \"reason\": \"learning_curves.csv missing or empty\",\n 253\t            \"observed\": {\"nan_count\": None, \"inf_count\": None},\n 254\t            \"applicable\": True,\n 255\t        }\n 256\t    else:\n 257\t        nan_cols: List[str] = []\n 258\t        inf_cols: List[str] = []\n 259\t        nan_count = 0\n 260\t        inf_count = 0\n 261\t        for col in numeric_cols:\n 262\t            for row in rows:\n 263\t                value = row.get(col)\n 264\t                if isinstance(value, float) and math.isnan(value):\n 265\t                    nan_count += 1\n 266\t                    if col not in nan_cols:\n 267\t                        nan_cols.append(col)\n 268\t                if isinstance(value, float) and math.isinf(value):\n 269\t                    inf_count += 1\n 270\t                    if col not in inf_cols:\n 271\t                        inf_cols.append(col)\n 272\t        passed = nan_count == 0 and inf_count == 0\n 273\t        reason = \"all numeric columns finite\" if passed else \"found NaN/Inf in numeric columns\"\n 274\t        checks[\"no_nan_inf\"] = {\n 275\t            \"pass\": passed,\n 276\t            \"reason\": reason,\n 277\t            \"observed\": {\"nan_count\": nan_count, \"inf_count\": inf_count, \"nan_cols\": nan_cols, \"inf_cols\": inf_cols},",
+          "why_relevant": "Fails run if any numeric column has NaN/Inf."
+        }
+      ],
+      "report_sources": [
+        {
+          "path": "outputs/sanity_suite/20251227_162149/full_triad_short/run_report.json",
+          "fields_used": [
+            "health_summary.status",
+            "health_summary.reasons",
+            "health_checks.no_nan_inf",
+            "health_checks.on_policy_expected",
+            "summary_metrics.learning_curves.*.last",
+            "summary_metrics.probes.*.last"
+          ]
+        }
+      ]
+    }
+  ],
+  "suite_summary_path": "outputs/sanity_suite/20251227_162149/SUMMARY.md",
+  "suite_summary_markdown": "# Summary\n\n| run | label | status | mean_rho2 | stability_proxy | fixed_point_drift | dist_mmd2 | reasons | run_dir |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| fixed_pi | fixed_pi | FAIL | 1.48 | 1 | 0.01721 | 0.01805 | no_nan_inf: found NaN/Inf in numeric columns | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/fixed_pi |\n| full_triad_short | full_triad_short | FAIL | 1.67 | 1 | 0.02569 | 0.03616 | no_nan_inf: found NaN/Inf in numeric columns | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/full_triad_short |\n| no_bootstrap | no_bootstrap | FAIL | 1.48 | 1 | 0.02956 | 0.01805 | no_nan_inf: found NaN/Inf in numeric columns | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/no_bootstrap |\n| on_policy | on_policy | FAIL | 1 | 1 | 0.01524 | 0.02035 | no_nan_inf: found NaN/Inf in numeric columns; on_policy_expected: on-policy expectations not met | /Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_162149/on_policy |",
+  "related_reports": [
+    {
+      "path": "outputs/preflight_train/20251227_162033/run_report.json",
+      "fields_used": [
+        "health_summary.status",
+        "health_checks.no_nan_inf",
+        "summary_metrics.learning_curves.*.last",
+        "summary_metrics.probes.*.last"
+      ]
+    }
+  ]
+}

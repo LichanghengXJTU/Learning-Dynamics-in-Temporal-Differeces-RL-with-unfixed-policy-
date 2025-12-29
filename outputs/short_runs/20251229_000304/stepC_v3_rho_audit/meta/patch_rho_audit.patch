@@ -1,0 +1,589 @@
+--- /tmp/train_unfixed_ac.py.before	2025-12-28 23:40:40
++++ tdrl_unfixed_ac/algos/train_unfixed_ac.py	2025-12-28 23:41:36
+@@ -295,6 +295,10 @@
+             grad_theta = np.zeros_like(theta_pi)
+             td_errors = []
+             rho_vals = []
++            rho_raw_vals = []
++            rho_exec_vals = []
++            a_diff_vals = []
++            clip_count = 0
+ 
+             delta_cache = None
+             if probe_manager.enabled and probe_manager.q_kernel_enabled:
+@@ -309,17 +313,25 @@
+                 psi = feat0["psi"]
+                 for t_idx in range(horizon):
+                     # ---- sample action from behavior policy mu ----
+-                    a = mu_policy.sample_action(psi, rollout_rng)
+-                    a = _clip_action(a, env.v_max)  # keep consistent with env._clip_action
++                    a_raw = mu_policy.sample_action(psi, rollout_rng)
++                    a_exec = _clip_action(a_raw, env.v_max)  # keep consistent with env._clip_action
++                    a_diff = float(np.linalg.norm(a_raw - a_exec))
++                    a_diff_vals.append(a_diff)
++                    if float(np.linalg.norm(a_raw)) > env.v_max + 1e-12:
++                        clip_count += 1
+ 
+                     # ---- importance ratio rho = pi(a|s) / mu(a|s) ----
+-                    logp_pi = pi_policy.log_prob(a, psi)
+-                    logp_mu = mu_policy.log_prob(a, psi)
+-                    rho_raw = float(np.exp(logp_pi - logp_mu))
+-                    rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
++                    logp_pi_raw = pi_policy.log_prob(a_raw, psi)
++                    logp_mu_raw = mu_policy.log_prob(a_raw, psi)
++                    rho_raw = float(np.exp(logp_pi_raw - logp_mu_raw))
+ 
++                    logp_pi_exec = pi_policy.log_prob(a_exec, psi)
++                    logp_mu_exec = mu_policy.log_prob(a_exec, psi)
++                    rho_exec = float(np.exp(logp_pi_exec - logp_mu_exec))
++                    rho = apply_rho_clip(rho_exec, rho_clip, disable=disable_rho_clip)
++
+                     # ---- step env (reward + phi are consistent via info["phi"]) ----
+-                    obs, reward, terminated, truncated, info = env.step(a)
++                    obs, reward, terminated, truncated, info = env.step(a_exec)
+ 
+                     phi = info["phi"]  # phi(s_t, a_t) used for reward + TD
+                     psi_next = info["psi_next"]  # psi(s_{t+1})
+@@ -333,7 +345,7 @@
+                     delta = float(reward + gamma * q_next - q_sa)
+ 
+                     # ---- actor score grad (target policy) ----
+-                    g = pi_policy.score(a, psi)  # grad_theta log pi(a|s)
++                    g = pi_policy.score(a_exec, psi)  # grad_theta log pi(a|s)
+ 
+                     # ---- accumulate gradients ----
+                     grad_w += rho * delta * phi
+@@ -341,6 +353,8 @@
+ 
+                     td_errors.append(delta)
+                     rho_vals.append(rho)
++                    rho_raw_vals.append(rho_raw)
++                    rho_exec_vals.append(rho_exec)
+                     if delta_cache is not None and traj_idx < delta_cache.shape[0] and t_idx < delta_cache.shape[1]:
+                         delta_cache[traj_idx, t_idx] = delta
+ 
+@@ -349,6 +363,9 @@
+                     if terminated or truncated:
+                         break
+ 
++            w_prev = np.array(w, copy=True)
++            theta_pi_prev = np.array(theta_pi, copy=True)
++
+             scale = 1.0 / total_steps
+             w = w + alpha_w * scale * grad_w
+             theta_pi = theta_pi + alpha_pi * scale * grad_theta
+@@ -356,6 +373,8 @@
+ 
+             theta_pi = project_to_ball(theta_pi, theta_radius)
+             theta_mu = project_to_ball(theta_mu, theta_radius)
++            delta_theta_pi_norm = float(np.linalg.norm(theta_pi - theta_pi_prev))
++            delta_w_norm = float(np.linalg.norm(w - w_prev))
+ 
+             td_loss = float(np.mean(np.square(td_errors))) if td_errors else float("nan")
+             if rho_vals:
+@@ -381,6 +400,22 @@
+                 p99_rho2 = float("nan")
+                 max_rho2 = float("nan")
+ 
++            if rho_raw_vals:
++                rho_raw_arr = np.asarray(rho_raw_vals, dtype=float)
++                mean_rho_raw = float(np.mean(rho_raw_arr))
++                mean_rho2_raw = float(np.mean(rho_raw_arr * rho_raw_arr))
++            else:
++                mean_rho_raw = float("nan")
++                mean_rho2_raw = float("nan")
++
++            if rho_exec_vals:
++                rho_exec_arr = np.asarray(rho_exec_vals, dtype=float)
++                mean_rho_exec = float(np.mean(rho_exec_arr))
++                mean_rho2_exec = float(np.mean(rho_exec_arr * rho_exec_arr))
++            else:
++                mean_rho_exec = float("nan")
++                mean_rho2_exec = float("nan")
++
+             if td_errors:
+                 delta_arr = np.asarray(td_errors, dtype=float)
+                 delta_mean = float(np.mean(delta_arr))
+@@ -394,6 +429,18 @@
+                 delta_p95 = float("nan")
+                 delta_p99 = float("nan")
+                 delta_max = float("nan")
++
++            if a_diff_vals:
++                diff_arr = np.asarray(a_diff_vals, dtype=float)
++                mean_abs_a_diff = float(np.mean(diff_arr))
++                p95_abs_a_diff = float(np.quantile(diff_arr, 0.95))
++                max_abs_a_diff = float(np.max(diff_arr))
++                clip_fraction = float(clip_count / diff_arr.size)
++            else:
++                mean_abs_a_diff = float("nan")
++                p95_abs_a_diff = float("nan")
++                max_abs_a_diff = float("nan")
++                clip_fraction = float("nan")
+             critic_teacher_error = float(np.dot(w - teacher_w, w - teacher_w) / feature_dim)
+             tracking_gap = float(np.linalg.norm(theta_pi - theta_mu) ** 2 / actor_dim)
+             w_norm = float(np.linalg.norm(w))
+@@ -405,6 +452,10 @@
+                 "tracking_gap": tracking_gap,
+                 "mean_rho": mean_rho,
+                 "mean_rho2": mean_rho2,
++                "mean_rho_raw": mean_rho_raw,
++                "mean_rho2_raw": mean_rho2_raw,
++                "mean_rho_exec": mean_rho_exec,
++                "mean_rho2_exec": mean_rho2_exec,
+                 "min_rho": min_rho,
+                 "max_rho": max_rho,
+                 "p95_rho": p95_rho,
+@@ -412,12 +463,18 @@
+                 "p95_rho2": p95_rho2,
+                 "p99_rho2": p99_rho2,
+                 "max_rho2": max_rho2,
++                "clip_fraction": clip_fraction,
++                "mean_abs_a_diff": mean_abs_a_diff,
++                "p95_abs_a_diff": p95_abs_a_diff,
++                "max_abs_a_diff": max_abs_a_diff,
+                 "delta_mean": delta_mean,
+                 "delta_std": delta_std,
+                 "delta_p95": delta_p95,
+                 "delta_p99": delta_p99,
+                 "delta_max": delta_max,
+                 "w_norm": w_norm,
++                "delta_theta_pi_norm": delta_theta_pi_norm,
++                "delta_w_norm": delta_w_norm,
+                 **probe_defaults,
+             }
+             probe_updates = probe_manager.maybe_run(
+--- /dev/null	2025-12-29 00:39:03
++++ scripts/rho_audit.py	2025-12-28 23:44:04
+@@ -0,0 +1,180 @@
++#!/usr/bin/env python3
++"""Summarize rho statistics and action clipping diagnostics for a run."""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import math
++from pathlib import Path
++from typing import Dict, List
++
++import numpy as np
++
++REQUIRED_COLUMNS = [
++    "iter",
++    "mean_rho",
++    "mean_rho2",
++    "p95_rho",
++    "p99_rho",
++    "max_rho",
++    "clip_fraction",
++    "mean_abs_a_diff",
++    "p95_abs_a_diff",
++    "max_abs_a_diff",
++    "mean_rho_raw",
++    "mean_rho2_raw",
++    "mean_rho_exec",
++    "mean_rho2_exec",
++]
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Audit rho statistics and action clipping.")
++    parser.add_argument("--run", type=str, required=True, help="Run directory containing learning_curves.csv")
++    return parser.parse_args()
++
++
++def _parse_float(value: object) -> float:
++    if value is None:
++        return math.nan
++    try:
++        text = str(value).strip()
++    except Exception:
++        return math.nan
++    if text == "":
++        return math.nan
++    try:
++        return float(text)
++    except (TypeError, ValueError):
++        return math.nan
++
++
++def _load_rows(path: Path) -> List[Dict[str, object]]:
++    if not path.exists():
++        return []
++    with path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        return list(reader)
++
++
++def _coerce_row(row: Dict[str, object]) -> Dict[str, float]:
++    payload: Dict[str, float] = {}
++    for col in REQUIRED_COLUMNS:
++        payload[col] = _parse_float(row.get(col))
++    return payload
++
++
++def _finite(values: List[float]) -> List[float]:
++    return [val for val in values if isinstance(val, (int, float)) and math.isfinite(float(val))]
++
++
++def _series_stats(values: List[float]) -> Dict[str, float]:
++    finite = _finite(values)
++    if not finite:
++        return {"count": 0.0, "last": math.nan, "min": math.nan, "max": math.nan, "mean": math.nan, "p95": math.nan}
++    arr = np.asarray(finite, dtype=float)
++    return {
++        "count": float(arr.size),
++        "last": float(arr[-1]),
++        "min": float(np.min(arr)),
++        "max": float(np.max(arr)),
++        "mean": float(np.mean(arr)),
++        "p95": float(np.quantile(arr, 0.95)),
++    }
++
++
++def _format(value: float) -> str:
++    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
++        return "-"
++    return f"{value:.4g}"
++
++
++def _write_csv(path: Path, rows: List[Dict[str, float]]) -> None:
++    if not rows:
++        return
++    fieldnames = list(rows[0].keys())
++    with path.open("w", newline="") as handle:
++        writer = csv.DictWriter(handle, fieldnames=fieldnames)
++        writer.writeheader()
++        for row in rows:
++            writer.writerow(row)
++
++
++def _write_markdown(path: Path, run_dir: Path, rows: List[Dict[str, float]]) -> None:
++    if not rows:
++        path.write_text("# rho audit\n\nNo learning_curves.csv rows found.\n")
++        return
++
++    iters = [row["iter"] for row in rows]
++    iter_finite = _finite(iters)
++    iter_min = min(iter_finite) if iter_finite else math.nan
++    iter_max = max(iter_finite) if iter_finite else math.nan
++
++    mean_rho2_stats = _series_stats([row["mean_rho2"] for row in rows])
++    p95_rho_stats = _series_stats([row["p95_rho"] for row in rows])
++    p99_rho_stats = _series_stats([row["p99_rho"] for row in rows])
++    max_rho_stats = _series_stats([row["max_rho"] for row in rows])
++    clip_stats = _series_stats([row["clip_fraction"] for row in rows])
++    mean_diff_stats = _series_stats([row["mean_abs_a_diff"] for row in rows])
++    p95_diff_stats = _series_stats([row["p95_abs_a_diff"] for row in rows])
++    max_diff_stats = _series_stats([row["max_abs_a_diff"] for row in rows])
++
++    rho2_raw_stats = _series_stats([row["mean_rho2_raw"] for row in rows])
++    rho2_exec_stats = _series_stats([row["mean_rho2_exec"] for row in rows])
++
++    rho2_min = mean_rho2_stats["min"]
++    rho2_below_one = isinstance(rho2_min, (int, float)) and math.isfinite(rho2_min) and rho2_min < 1.0
++
++    lines = [
++        "# rho audit",
++        "",
++        f"run: {run_dir}",
++        f"rows: {int(mean_rho2_stats['count']) if mean_rho2_stats['count'] else 0} (iters { _format(iter_min) } -> { _format(iter_max) })",
++        "",
++        "## key metrics",
++        f"- mean_rho2: last={_format(mean_rho2_stats['last'])}, min={_format(mean_rho2_stats['min'])}, max={_format(mean_rho2_stats['max'])}",
++        f"- E[rho^2] < 1 observed: {'yes' if rho2_below_one else 'no'}",
++        f"- rho tails (max over iters): p95={_format(p95_rho_stats['max'])}, p99={_format(p99_rho_stats['max'])}, max={_format(max_rho_stats['max'])}",
++        f"- clip_fraction: last={_format(clip_stats['last'])}, max={_format(clip_stats['max'])}",
++        f"- |a_raw-a_exec|: mean_last={_format(mean_diff_stats['last'])}, p95_last={_format(p95_diff_stats['last'])}, max_last={_format(max_diff_stats['last'])}",
++    ]
++
++    if math.isfinite(rho2_raw_stats["last"]) or math.isfinite(rho2_exec_stats["last"]):
++        lines.append(
++            f"- mean_rho2_raw vs mean_rho2_exec (last): {_format(rho2_raw_stats['last'])} vs {_format(rho2_exec_stats['last'])}"
++        )
++    else:
++        lines.append("- mean_rho2_raw/mean_rho2_exec: unavailable (columns missing)")
++
++    lines.append("")
++    lines.append("## notes")
++    lines.append("- mean_rho2 is based on the clipped rho used in training.")
++    lines.append("- mean_rho2_raw/exec are unclipped rho computed on raw vs clipped actions.")
++
++    path.write_text("\n".join(lines) + "\n")
++
++
++def main() -> None:
++    args = parse_args()
++    run_dir = Path(args.run)
++    curves_path = run_dir / "learning_curves.csv"
++    rows = _load_rows(curves_path)
++    if not rows:
++        _write_markdown(run_dir / "rho_audit.md", run_dir, [])
++        raise SystemExit(f"No learning_curves.csv found at {curves_path}")
++
++    coerced = [_coerce_row(row) for row in rows]
++    # filter to rows with finite iter for output ordering
++    coerced = [row for row in coerced if math.isfinite(row["iter"])]
++    coerced.sort(key=lambda r: r["iter"])
++
++    out_csv = run_dir / "rho_audit.csv"
++    _write_csv(out_csv, coerced)
++    _write_markdown(run_dir / "rho_audit.md", run_dir, coerced)
++
++    print(f"Wrote {out_csv}")
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null	2025-12-29 00:39:03
++++ scripts/rho_audit_summary.py	2025-12-28 23:44:47
+@@ -0,0 +1,130 @@
++#!/usr/bin/env python3
++"""Compare rho audit metrics across plateau/instability runs."""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import math
++from pathlib import Path
++from typing import Dict, List
++
++import numpy as np
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Summarize rho_audit.csv for two runs.")
++    parser.add_argument("--plateau-run", type=str, required=True, help="Plateau run directory")
++    parser.add_argument("--instability-run", type=str, required=True, help="Instability run directory")
++    parser.add_argument("--out", type=str, required=True, help="Output markdown path")
++    return parser.parse_args()
++
++
++def _parse_float(value: object) -> float:
++    if value is None:
++        return math.nan
++    try:
++        text = str(value).strip()
++    except Exception:
++        return math.nan
++    if text == "":
++        return math.nan
++    try:
++        return float(text)
++    except (TypeError, ValueError):
++        return math.nan
++
++
++def _load_rows(path: Path) -> List[Dict[str, float]]:
++    if not path.exists():
++        return []
++    with path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        rows: List[Dict[str, float]] = []
++        for row in reader:
++            rows.append({key: _parse_float(val) for key, val in row.items()})
++        return rows
++
++
++def _finite(values: List[float]) -> List[float]:
++    return [val for val in values if isinstance(val, (int, float)) and math.isfinite(float(val))]
++
++
++def _series_stats(rows: List[Dict[str, float]], col: str) -> Dict[str, float]:
++    vals = _finite([row.get(col, math.nan) for row in rows])
++    if not vals:
++        return {"last": math.nan, "min": math.nan, "max": math.nan}
++    return {
++        "last": float(vals[-1]),
++        "min": float(np.min(vals)),
++        "max": float(np.max(vals)),
++    }
++
++
++def _format(value: float) -> str:
++    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
++        return "-"
++    return f"{value:.4g}"
++
++
++def _summarize(rows: List[Dict[str, float]]) -> Dict[str, float]:
++    return {
++        "mean_rho2_last": _series_stats(rows, "mean_rho2")["last"],
++        "mean_rho2_min": _series_stats(rows, "mean_rho2")["min"],
++        "p99_rho_max": _series_stats(rows, "p99_rho")["max"],
++        "max_rho_max": _series_stats(rows, "max_rho")["max"],
++        "clip_fraction_last": _series_stats(rows, "clip_fraction")["last"],
++        "clip_fraction_max": _series_stats(rows, "clip_fraction")["max"],
++        "mean_abs_a_diff_last": _series_stats(rows, "mean_abs_a_diff")["last"],
++        "mean_rho2_raw_last": _series_stats(rows, "mean_rho2_raw")["last"],
++        "mean_rho2_exec_last": _series_stats(rows, "mean_rho2_exec")["last"],
++    }
++
++
++def _rho2_ok(value: float) -> str:
++    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
++        return "-"
++    return "yes" if value >= 1.0 else "no"
++
++
++def main() -> None:
++    args = parse_args()
++    plateau_run = Path(args.plateau_run)
++    instability_run = Path(args.instability_run)
++
++    plateau_rows = _load_rows(plateau_run / "rho_audit.csv")
++    instability_rows = _load_rows(instability_run / "rho_audit.csv")
++
++    plateau = _summarize(plateau_rows)
++    instability = _summarize(instability_rows)
++
++    lines = [
++        "# rho audit summary",
++        "",
++        f"plateau: {plateau_run}",
++        f"instability: {instability_run}",
++        "",
++        "| metric | plateau | instability |",
++        "| --- | --- | --- |",
++        f"| mean_rho2_last | {_format(plateau['mean_rho2_last'])} | {_format(instability['mean_rho2_last'])} |",
++        f"| mean_rho2_min | {_format(plateau['mean_rho2_min'])} | {_format(instability['mean_rho2_min'])} |",
++        f"| E[rho^2] >= 1 (min) | {_rho2_ok(plateau['mean_rho2_min'])} | {_rho2_ok(instability['mean_rho2_min'])} |",
++        f"| p99_rho_max | {_format(plateau['p99_rho_max'])} | {_format(instability['p99_rho_max'])} |",
++        f"| max_rho_max | {_format(plateau['max_rho_max'])} | {_format(instability['max_rho_max'])} |",
++        f"| clip_fraction_last | {_format(plateau['clip_fraction_last'])} | {_format(instability['clip_fraction_last'])} |",
++        f"| clip_fraction_max | {_format(plateau['clip_fraction_max'])} | {_format(instability['clip_fraction_max'])} |",
++        f"| mean_abs_a_diff_last | {_format(plateau['mean_abs_a_diff_last'])} | {_format(instability['mean_abs_a_diff_last'])} |",
++        f"| mean_rho2_raw_last | {_format(plateau['mean_rho2_raw_last'])} | {_format(instability['mean_rho2_raw_last'])} |",
++        f"| mean_rho2_exec_last | {_format(plateau['mean_rho2_exec_last'])} | {_format(instability['mean_rho2_exec_last'])} |",
++        "",
++        "## conclusion",
++        f"- plateau E[rho^2] >= 1 (min over iters): {_rho2_ok(plateau['mean_rho2_min'])}",
++        f"- instability E[rho^2] >= 1 (min over iters): {_rho2_ok(instability['mean_rho2_min'])}",
++        "",
++    ]
++
++    Path(args.out).write_text("\n".join(lines))
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null	2025-12-29 00:39:03
++++ scripts/summarize_updates.py	2025-12-28 23:45:18
+@@ -0,0 +1,115 @@
++#!/usr/bin/env python3
++"""Summarize parameter update scales from learning_curves.csv."""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import math
++from pathlib import Path
++from typing import Dict, List
++
++import numpy as np
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Summarize update norms for plateau/instability runs.")
++    parser.add_argument("--plateau-run", type=str, required=True, help="Plateau run directory")
++    parser.add_argument("--instability-run", type=str, required=True, help="Instability run directory")
++    parser.add_argument("--out", type=str, required=True, help="Output markdown path")
++    return parser.parse_args()
++
++
++def _parse_float(value: object) -> float:
++    if value is None:
++        return math.nan
++    try:
++        text = str(value).strip()
++    except Exception:
++        return math.nan
++    if text == "":
++        return math.nan
++    try:
++        return float(text)
++    except (TypeError, ValueError):
++        return math.nan
++
++
++def _load_rows(path: Path) -> List[Dict[str, float]]:
++    if not path.exists():
++        return []
++    with path.open("r", newline="") as handle:
++        reader = csv.DictReader(handle)
++        rows: List[Dict[str, float]] = []
++        for row in reader:
++            rows.append({key: _parse_float(val) for key, val in row.items()})
++        return rows
++
++
++def _finite(values: List[float]) -> List[float]:
++    return [val for val in values if isinstance(val, (int, float)) and math.isfinite(float(val))]
++
++
++def _series_stats(rows: List[Dict[str, float]], col: str) -> Dict[str, float]:
++    vals = _finite([row.get(col, math.nan) for row in rows])
++    if not vals:
++        return {"count": 0.0, "first": math.nan, "last": math.nan, "mean": math.nan, "p95": math.nan}
++    arr = np.asarray(vals, dtype=float)
++    return {
++        "count": float(arr.size),
++        "first": float(arr[0]),
++        "last": float(arr[-1]),
++        "mean": float(np.mean(arr)),
++        "p95": float(np.quantile(arr, 0.95)),
++    }
++
++
++def _format(value: float) -> str:
++    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
++        return "-"
++    return f"{value:.4g}"
++
++
++def _summarize(rows: List[Dict[str, float]]) -> Dict[str, Dict[str, float]]:
++    return {
++        "delta_theta_pi_norm": _series_stats(rows, "delta_theta_pi_norm"),
++        "delta_w_norm": _series_stats(rows, "delta_w_norm"),
++    }
++
++
++def main() -> None:
++    args = parse_args()
++    plateau_run = Path(args.plateau_run)
++    instability_run = Path(args.instability_run)
++
++    plateau_rows = _load_rows(plateau_run / "learning_curves.csv")
++    instability_rows = _load_rows(instability_run / "learning_curves.csv")
++
++    plateau = _summarize(plateau_rows)
++    instability = _summarize(instability_rows)
++
++    lines = [
++        "# updates scale summary",
++        "",
++        f"plateau: {plateau_run}",
++        f"instability: {instability_run}",
++        "",
++        "| metric | plateau | instability |",
++        "| --- | --- | --- |",
++    ]
++
++    for metric in ["delta_theta_pi_norm", "delta_w_norm"]:
++        for stat_key in ["first", "last", "mean", "p95"]:
++            plateau_val = plateau[metric][stat_key]
++            instability_val = instability[metric][stat_key]
++            lines.append(
++                f"| {metric}_{stat_key} | {_format(plateau_val)} | {_format(instability_val)} |"
++            )
++
++    lines.append("")
++
++    Path(args.out).write_text("\n".join(lines))
++
++
++if __name__ == "__main__":
++    main()

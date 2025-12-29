@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 
-from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy
+from tdrl_unfixed_ac.algos.unfixed_ac import LinearGaussianPolicy, apply_rho_clip
 from tdrl_unfixed_ac.envs.torus_gg import TorusGobletGhostEnv
 
 
 def clip_action(action: np.ndarray, v_max: float) -> np.ndarray:
-    """Clip action to L2 ball of radius v_max."""
-    norm = float(np.linalg.norm(action))
-    if norm > v_max and norm > 0.0:
-        return action / norm * v_max
-    return action
+    """Clip action per component to [-v_max, v_max]."""
+    if v_max <= 0.0:
+        return action
+    return np.clip(action, -v_max, v_max)
 
 
 def mc_bar_phi(
@@ -43,6 +42,8 @@ def collect_critic_batch(
     rng: np.random.Generator,
     batch_size: int,
     k_mc: int,
+    rho_clip: Optional[float] = None,
+    disable_rho_clip: bool = False,
 ) -> Dict[str, np.ndarray]:
     """Collect a batch of critic transitions under behavior policy mu."""
     zero_action = np.zeros(2, dtype=float)
@@ -64,7 +65,8 @@ def collect_critic_batch(
 
         logp_pi = pi_policy.log_prob(a, psi)
         logp_mu = mu_policy.log_prob(a, psi)
-        rho = float(np.exp(logp_pi - logp_mu))
+        rho_raw = float(np.exp(logp_pi - logp_mu))
+        rho = apply_rho_clip(rho_raw, rho_clip, disable=disable_rho_clip)
 
         obs, reward, terminated, truncated, info = env.step(a)
 
@@ -91,4 +93,35 @@ def collect_critic_batch(
         "bar_phi": np.stack(bar_phis, axis=0),
         "rho": np.asarray(rhos, dtype=float),
         "reward": np.asarray(rewards, dtype=float),
+    }
+
+
+def summarize_rho(rho: np.ndarray) -> Dict[str, float]:
+    rho_arr = np.asarray(rho, dtype=float)
+    if rho_arr.size == 0 or not np.isfinite(rho_arr).any():
+        return {
+            "rho_mean": float("nan"),
+            "rho2_mean": float("nan"),
+            "rho_min": float("nan"),
+            "rho_max": float("nan"),
+            "rho_p95": float("nan"),
+            "rho_p99": float("nan"),
+        }
+    rho_arr = rho_arr[np.isfinite(rho_arr)]
+    rho2_arr = rho_arr * rho_arr
+    return {
+        "rho_mean": float(np.mean(rho_arr)),
+        "rho2_mean": float(np.mean(rho2_arr)),
+        "rho_min": float(np.min(rho_arr)),
+        "rho_max": float(np.max(rho_arr)),
+        "rho_p95": float(np.quantile(rho_arr, 0.95)),
+        "rho_p99": float(np.quantile(rho_arr, 0.99)),
+    }
+
+
+def rho_clip_metadata(rho_clip: Optional[float], disable_rho_clip: bool) -> Dict[str, float]:
+    active = rho_clip is not None and float(rho_clip) > 0.0 and not disable_rho_clip
+    return {
+        "rho_clip": float(rho_clip) if rho_clip is not None else float("nan"),
+        "rho_clip_active": 1.0 if active else 0.0,
     }

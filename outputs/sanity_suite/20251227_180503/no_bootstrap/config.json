@@ -1,0 +1,59 @@
+{
+  "seed": 0,
+  "outer_iters": 5,
+  "trajectories": 2,
+  "horizon": 50,
+  "gamma": 0.0,
+  "alpha_w": 0.1,
+  "alpha_pi": 0.05,
+  "beta": 0.2,
+  "sigma_mu": 0.3,
+  "sigma_pi": 0.2,
+  "K_mc": 2,
+  "theta_radius": 5.0,
+  "theta_init_scale": 0.1,
+  "w_init_scale": 0.1,
+  "checkpoint_every": 1,
+  "log_every": 1,
+  "report_every": 0,
+  "report_every_seconds": 0,
+  "output_dir": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/outputs/sanity_suite/20251227_180503/no_bootstrap",
+  "resume": false,
+  "resume_from": null,
+  "env_config_path": "/Users/enhuili/Desktop/Learning Dynamics in Temporal Differences Reinforcement Learning with Unfixed Policy/Learning-Dynamics-in-Temporal-Differeces-RL-with-unfixed-policy-/configs/default.yaml",
+  "env": {
+    "feature_dim": 256,
+    "actor_feature_dim": 64,
+    "p_mix": 0.1
+  },
+  "probes": {
+    "enabled": true,
+    "every": 1,
+    "plateau": {
+      "enabled": false,
+      "window": 5,
+      "tol": 0.001,
+      "cooldown": 5,
+      "min_iter": 5
+    },
+    "fixed_point": {
+      "enabled": true,
+      "batch_size": 512,
+      "max_iters": 200,
+      "tol": "1e-6",
+      "k_mc": 2
+    },
+    "stability": {
+      "enabled": true,
+      "batch_size": 512,
+      "power_iters": 20,
+      "k_mc": 2,
+      "n_power_iters": 20
+    },
+    "distribution": {
+      "enabled": true,
+      "num_samples": 512
+    }
+  },
+  "check_name": "no_bootstrap"
+}
